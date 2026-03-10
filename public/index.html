@@ -1,0 +1,988 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KindleSync</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg-primary: #0f1117;
+      --bg-secondary: #1a1b23;
+      --bg-sidebar: #14151d;
+      --bg-card: #1e1f2b;
+      --bg-hover: #252736;
+      --text-primary: #e4e4e7;
+      --text-secondary: #9394a1;
+      --text-muted: #5e5f6e;
+      --accent: #5c6bc0;
+      --accent-hover: #7986cb;
+      --yellow: #fdd835;
+      --blue: #42a5f5;
+      --pink: #ef5350;
+      --orange: #ffa726;
+      --border: #2a2b3a;
+      --border-light: #333450;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      height: 100vh;
+    }
+
+    #app {
+      display: flex;
+      height: 100vh;
+      width: 100%;
+    }
+
+    /* ==================== SIDEBAR ==================== */
+    .sidebar {
+      width: 280px;
+      min-width: 280px;
+      background: var(--bg-sidebar);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    .sidebar-header {
+      padding: 20px 20px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .sidebar-header h1 {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+    }
+
+    .sidebar-header span { color: var(--accent); }
+
+    .btn-resync {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 11px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-resync:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+      border-color: var(--accent);
+    }
+
+    .sidebar-search {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .sidebar-search input {
+      width: 100%;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 12px;
+      color: var(--text-primary);
+      font-size: 12px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .sidebar-search input:focus { border-color: var(--accent); }
+
+    .sidebar-stats {
+      padding: 10px 20px;
+      border-bottom: 1px solid var(--border);
+      font-size: 11px;
+      color: var(--text-muted);
+      display: flex;
+      gap: 12px;
+    }
+
+    .sidebar-stats .stat {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .sidebar-stats .stat-value {
+      color: var(--text-secondary);
+      font-weight: 600;
+    }
+
+    .book-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 4px 0;
+    }
+
+    .book-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 16px;
+      cursor: pointer;
+      transition: background 0.15s;
+      border-left: 3px solid transparent;
+    }
+
+    .book-item:hover { background: var(--bg-hover); }
+
+    .book-item.active {
+      background: var(--bg-hover);
+      border-left-color: var(--accent);
+    }
+
+    .book-item img {
+      width: 34px;
+      height: 48px;
+      object-fit: cover;
+      border-radius: 3px;
+      flex-shrink: 0;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+    }
+
+    .book-item .book-cover-placeholder {
+      width: 34px;
+      height: 48px;
+      background: var(--bg-hover);
+      border-radius: 3px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .book-item .book-cover-placeholder svg {
+      width: 16px;
+      height: 16px;
+      stroke: var(--text-muted);
+    }
+
+    .book-item .book-info {
+      overflow: hidden;
+      flex: 1;
+      min-width: 0;
+    }
+
+    .book-item .book-title {
+      font-size: 13px;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      line-height: 1.3;
+    }
+
+    .book-item .book-meta {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .book-item .highlight-count {
+      font-size: 10px;
+      color: var(--text-muted);
+      background: var(--bg-card);
+      padding: 2px 8px;
+      border-radius: 10px;
+      flex-shrink: 0;
+    }
+
+    /* ==================== MAIN CONTENT ==================== */
+    .main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* Book detail header */
+    .book-detail-header {
+      padding: 24px 32px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      gap: 20px;
+      align-items: flex-start;
+      background: var(--bg-secondary);
+    }
+
+    .book-detail-cover {
+      width: 64px;
+      height: 90px;
+      object-fit: cover;
+      border-radius: 4px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+      flex-shrink: 0;
+    }
+
+    .book-detail-cover-placeholder {
+      width: 64px;
+      height: 90px;
+      background: var(--bg-card);
+      border-radius: 4px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .book-detail-cover-placeholder svg {
+      width: 28px;
+      height: 28px;
+      stroke: var(--text-muted);
+    }
+
+    .book-detail-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .book-detail-info h2 {
+      font-size: 18px;
+      font-weight: 600;
+      line-height: 1.3;
+      margin-bottom: 4px;
+    }
+
+    .book-detail-info .detail-author {
+      font-size: 14px;
+      color: var(--text-secondary);
+      margin-bottom: 12px;
+    }
+
+    .book-detail-stats {
+      display: flex;
+      gap: 16px;
+      font-size: 12px;
+    }
+
+    .book-detail-stats .stat-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--text-muted);
+      background: var(--bg-card);
+      padding: 4px 10px;
+      border-radius: 6px;
+    }
+
+    .book-detail-stats .stat-badge svg {
+      width: 14px;
+      height: 14px;
+      stroke: var(--text-muted);
+    }
+
+    .book-detail-stats .stat-badge span {
+      color: var(--text-secondary);
+      font-weight: 600;
+    }
+
+    .book-detail-actions {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    /* Toolbar */
+    .toolbar {
+      padding: 12px 32px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--bg-primary);
+    }
+
+    .toolbar-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .filter-pills {
+      display: flex;
+      gap: 4px;
+    }
+
+    .filter-pill {
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 11px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .filter-pill:hover, .filter-pill.active {
+      border-color: var(--accent);
+      color: var(--text-primary);
+    }
+
+    .filter-pill.active { background: rgba(92, 107, 192, 0.15); }
+
+    .search-bar {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 12px;
+      color: var(--text-primary);
+      font-size: 12px;
+      width: 220px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .search-bar:focus { border-color: var(--accent); }
+
+    /* Highlights */
+    .highlights-container {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px 32px;
+    }
+
+    .highlight-card {
+      background: var(--bg-card);
+      border-radius: 8px;
+      padding: 18px 22px;
+      margin-bottom: 10px;
+      border-left: 3px solid var(--yellow);
+      transition: background 0.15s;
+      position: relative;
+    }
+
+    .highlight-card:hover { background: var(--bg-hover); }
+    .highlight-card.color-blue { border-left-color: var(--blue); }
+    .highlight-card.color-pink { border-left-color: var(--pink); }
+    .highlight-card.color-orange { border-left-color: var(--orange); }
+
+    .highlight-text {
+      font-size: 14px;
+      line-height: 1.7;
+      color: var(--text-primary);
+    }
+
+    .highlight-note {
+      margin-top: 10px;
+      padding: 10px 14px;
+      background: rgba(92, 107, 192, 0.1);
+      border-radius: 6px;
+      font-size: 13px;
+      color: var(--accent-hover);
+      font-style: italic;
+    }
+
+    .highlight-footer {
+      margin-top: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .highlight-location {
+      font-size: 11px;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .highlight-meta-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      background: var(--bg-primary);
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+      color: var(--text-muted);
+    }
+
+    .highlight-meta-tag svg {
+      width: 11px;
+      height: 11px;
+      stroke: var(--text-muted);
+    }
+
+    .highlight-type-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+
+    .highlight-type-badge.type-highlight {
+      background: rgba(253, 216, 53, 0.1);
+      color: var(--yellow);
+    }
+
+    .highlight-type-badge.type-note {
+      background: rgba(92, 107, 192, 0.1);
+      color: var(--accent-hover);
+    }
+
+    .highlight-type-badge.type-bookmark {
+      background: rgba(239, 83, 80, 0.1);
+      color: var(--pink);
+    }
+
+    .highlight-actions {
+      display: flex;
+      gap: 8px;
+      opacity: 0;
+      transition: opacity 0.15s;
+    }
+
+    .highlight-card:hover .highlight-actions { opacity: 1; }
+
+    .highlight-action-btn {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 4px;
+      border-radius: 4px;
+      transition: all 0.15s;
+      display: flex;
+      align-items: center;
+    }
+
+    .highlight-action-btn:hover {
+      color: var(--text-primary);
+      background: var(--bg-card);
+    }
+
+    .highlight-action-btn svg {
+      width: 14px;
+      height: 14px;
+    }
+
+    /* Note editor inline */
+    .note-editor {
+      margin-top: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .note-editor textarea {
+      width: 100%;
+      background: var(--bg-primary);
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      padding: 10px 12px;
+      color: var(--text-primary);
+      font-size: 13px;
+      font-family: inherit;
+      resize: vertical;
+      min-height: 60px;
+      outline: none;
+    }
+
+    .note-editor-actions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+
+    .note-editor-actions button {
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      transition: all 0.15s;
+    }
+
+    .btn-save-note {
+      background: var(--accent);
+      color: white;
+      border-color: var(--accent) !important;
+    }
+
+    .btn-save-note:hover { background: var(--accent-hover); }
+
+    .btn-cancel-note {
+      background: var(--bg-card);
+      color: var(--text-secondary);
+    }
+
+    .btn-cancel-note:hover { background: var(--bg-hover); }
+
+    .btn-save-note:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* ==================== LOGIN SCREEN ==================== */
+    .login-screen {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      width: 100%;
+      gap: 20px;
+    }
+
+    .login-screen h1 { font-size: 32px; font-weight: 700; }
+    .login-screen h1 span { color: var(--accent); }
+
+    .login-screen p {
+      color: var(--text-secondary);
+      font-size: 15px;
+      max-width: 400px;
+      text-align: center;
+      line-height: 1.6;
+    }
+
+    .btn-connect {
+      background: var(--accent);
+      color: white;
+      border: none;
+      padding: 14px 32px;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+      margin-top: 8px;
+    }
+
+    .btn-connect:hover { background: var(--accent-hover); }
+    .btn-connect:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .status-text {
+      font-size: 13px;
+      color: var(--text-muted);
+      min-height: 20px;
+    }
+
+    .spinner {
+      width: 20px;
+      height: 20px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      display: inline-block;
+      vertical-align: middle;
+      margin-right: 8px;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ==================== EMPTY STATE ==================== */
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: var(--text-muted);
+      gap: 12px;
+    }
+
+    .empty-state svg {
+      width: 48px;
+      height: 48px;
+      stroke: var(--text-muted);
+    }
+
+    /* ==================== SCROLLBAR ==================== */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--border-light); }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+
+  <script>
+    const app = document.getElementById('app');
+    let books = [];
+    let selectedBook = null;
+    let searchQuery = '';
+    let bookSearchQuery = '';
+    let activeColorFilter = 'all';
+    let editingNote = null; // { highlightIndex }
+
+    const EDIT_ICON = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" /></svg>`;
+    const BOOK_ICON = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" /></svg>`;
+    const COPY_ICON = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0 0 13.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 0 1-.75.75H9.75a.75.75 0 0 1-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 0 1 1.927-.184" /></svg>`;
+
+    // ==================== RENDER ====================
+
+    function render() {
+      if (books.length === 0) {
+        renderLogin();
+      } else {
+        renderDashboard();
+      }
+    }
+
+    function renderLogin() {
+      app.innerHTML = `
+        <div class="login-screen">
+          <h1>Kindle<span>Sync</span></h1>
+          <p>Conecte sua conta Amazon para importar seus livros e destaques do Kindle.</p>
+          <button class="btn-connect" id="btn-login">Conectar Amazon Kindle</button>
+          <div class="status-text" id="status"></div>
+        </div>
+      `;
+      document.getElementById('btn-login').addEventListener('click', handleLogin);
+    }
+
+    function renderDashboard() {
+      const totalHighlights = books.reduce((sum, b) => sum + b.highlights.length, 0);
+      const book = selectedBook !== null ? books[selectedBook] : null;
+
+      const filteredBooks = bookSearchQuery
+        ? books.filter(b =>
+            b.title.toLowerCase().includes(bookSearchQuery.toLowerCase()) ||
+            b.author.toLowerCase().includes(bookSearchQuery.toLowerCase())
+          )
+        : books;
+
+      let filteredHighlights = book
+        ? book.highlights.filter(h =>
+            h.text.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            h.note?.toLowerCase().includes(searchQuery.toLowerCase())
+          )
+        : [];
+
+      if (activeColorFilter !== 'all') {
+        filteredHighlights = filteredHighlights.filter(h => (h.color || 'yellow') === activeColorFilter);
+      }
+
+      const colorCounts = book ? {
+        all: book.highlights.length,
+        yellow: book.highlights.filter(h => (h.color || 'yellow') === 'yellow').length,
+        blue: book.highlights.filter(h => h.color === 'blue').length,
+        pink: book.highlights.filter(h => h.color === 'pink').length,
+        orange: book.highlights.filter(h => h.color === 'orange').length,
+      } : {};
+
+      app.innerHTML = `
+        <div class="sidebar">
+          <div class="sidebar-header">
+            <h1>Kindle<span>Sync</span></h1>
+            <button class="btn-resync" id="btn-resync">Sincronizar</button>
+          </div>
+          <div class="sidebar-search">
+            <input type="text" placeholder="Buscar livros..." id="book-search" value="${escapeHtml(bookSearchQuery)}">
+          </div>
+          <div class="sidebar-stats">
+            <div class="stat"><span class="stat-value">${books.length}</span> livros</div>
+            <div class="stat"><span class="stat-value">${totalHighlights}</span> destaques</div>
+          </div>
+          <div class="book-list">
+            ${filteredBooks.map((b) => {
+              const originalIndex = books.indexOf(b);
+              return `
+              <div class="book-item ${originalIndex === selectedBook ? 'active' : ''}" data-index="${originalIndex}">
+                ${b.cover
+                  ? `<img src="${b.cover}" alt="">`
+                  : `<div class="book-cover-placeholder">${BOOK_ICON}</div>`
+                }
+                <div class="book-info">
+                  <div class="book-title">${escapeHtml(b.title)}</div>
+                  <div class="book-meta">${escapeHtml(b.author)}</div>
+                </div>
+                <div class="highlight-count">${b.highlights.length}</div>
+              </div>
+            `}).join('')}
+          </div>
+        </div>
+        <div class="main">
+          ${book ? `
+            <div class="book-detail-header">
+              ${book.cover
+                ? `<img class="book-detail-cover" src="${book.cover}" alt="">`
+                : `<div class="book-detail-cover-placeholder">${BOOK_ICON}</div>`
+              }
+              <div class="book-detail-info">
+                <h2>${escapeHtml(book.title)}</h2>
+                <div class="detail-author">${escapeHtml(book.author)}</div>
+                <div class="book-detail-stats">
+                  <div class="stat-badge">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" /></svg>
+                    <span>${book.highlights.length}</span> destaques
+                  </div>
+                  ${book.highlights.some(h => h.note) ? `
+                    <div class="stat-badge">
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.076-4.076a1.526 1.526 0 0 1 1.037-.443 48.282 48.282 0 0 0 5.399-.588c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z" /></svg>
+                      <span>${book.highlights.filter(h => h.note).length}</span> notas
+                    </div>
+                  ` : ''}
+                </div>
+              </div>
+            </div>
+            <div class="toolbar">
+              <div class="toolbar-left">
+                <div class="filter-pills">
+                  <button class="filter-pill ${activeColorFilter === 'all' ? 'active' : ''}" data-color="all">Todos (${colorCounts.all})</button>
+                  ${colorCounts.yellow ? `<button class="filter-pill ${activeColorFilter === 'yellow' ? 'active' : ''}" data-color="yellow" style="border-left: 2px solid var(--yellow);">Amarelo (${colorCounts.yellow})</button>` : ''}
+                  ${colorCounts.blue ? `<button class="filter-pill ${activeColorFilter === 'blue' ? 'active' : ''}" data-color="blue" style="border-left: 2px solid var(--blue);">Azul (${colorCounts.blue})</button>` : ''}
+                  ${colorCounts.pink ? `<button class="filter-pill ${activeColorFilter === 'pink' ? 'active' : ''}" data-color="pink" style="border-left: 2px solid var(--pink);">Rosa (${colorCounts.pink})</button>` : ''}
+                  ${colorCounts.orange ? `<button class="filter-pill ${activeColorFilter === 'orange' ? 'active' : ''}" data-color="orange" style="border-left: 2px solid var(--orange);">Laranja (${colorCounts.orange})</button>` : ''}
+                </div>
+              </div>
+              <input type="text" class="search-bar" placeholder="Buscar nos destaques..." id="search" value="${escapeHtml(searchQuery)}">
+            </div>
+            <div class="highlights-container">
+              ${filteredHighlights.length > 0
+                ? filteredHighlights.map((h, idx) => {
+                    const realIdx = book.highlights.indexOf(h);
+                    const isEditing = editingNote && editingNote.highlightIndex === realIdx;
+                    return `
+                    <div class="highlight-card color-${h.color || 'yellow'}">
+                      <div class="highlight-text">${escapeHtml(h.text)}</div>
+                      ${isEditing ? `
+                        <div class="note-editor">
+                          <textarea id="note-textarea">${escapeHtml(h.note)}</textarea>
+                          <div class="note-editor-actions">
+                            <button class="btn-cancel-note" data-cancel>Cancelar</button>
+                            <button class="btn-save-note" data-save="${realIdx}">Salvar no Kindle</button>
+                          </div>
+                        </div>
+                      ` : (h.note ? `<div class="highlight-note">${escapeHtml(h.note)}</div>` : '')}
+                      <div class="highlight-footer">
+                        <div class="highlight-location">
+                          ${h.type ? `<span class="highlight-type-badge type-${h.type}">${h.type === 'highlight' ? 'Destaque' : h.type === 'note' ? 'Nota' : 'Marcador'}</span>` : ''}
+                          ${h.page ? `<span class="highlight-meta-tag"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>Pág. ${escapeHtml(h.page)}</span>` : ''}
+                          ${h.locationNum ? `<span class="highlight-meta-tag"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z" /></svg>Loc. ${escapeHtml(h.locationNum)}</span>` : ''}
+                          ${h.date ? `<span class="highlight-meta-tag"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 9v9.75" /></svg>${escapeHtml(h.date)}</span>` : ''}
+                        </div>
+                        <div class="highlight-actions">
+                          <button class="highlight-action-btn" title="${h.note ? 'Editar nota' : 'Adicionar nota'}" data-edit="${realIdx}">${EDIT_ICON}</button>
+                          <button class="highlight-action-btn" title="Copiar" data-copy="${idx}">${COPY_ICON}</button>
+                        </div>
+                      </div>
+                    </div>
+                  `}).join('')
+                : `<div class="empty-state">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m5.231 13.481L15 17.25m-4.5-15H5.625c-.621 0-1.125.504-1.125 1.125v16.5c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+                    </svg>
+                    <p>Nenhum destaque encontrado</p>
+                  </div>`
+              }
+            </div>
+          ` : `
+            <div class="empty-state">
+              ${BOOK_ICON}
+              <p>Selecione um livro na barra lateral</p>
+            </div>
+          `}
+        </div>
+      `;
+
+      // Event listeners
+      document.querySelectorAll('.book-item').forEach(el => {
+        el.addEventListener('click', () => {
+          selectedBook = parseInt(el.dataset.index);
+          searchQuery = '';
+          activeColorFilter = 'all';
+          render();
+        });
+      });
+
+      const searchInput = document.getElementById('search');
+      if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+          searchQuery = e.target.value;
+          render();
+          document.getElementById('search')?.focus();
+        });
+      }
+
+      const bookSearchInput = document.getElementById('book-search');
+      if (bookSearchInput) {
+        bookSearchInput.addEventListener('input', (e) => {
+          bookSearchQuery = e.target.value;
+          render();
+          document.getElementById('book-search')?.focus();
+        });
+      }
+
+      document.querySelectorAll('.filter-pill').forEach(el => {
+        el.addEventListener('click', () => {
+          activeColorFilter = el.dataset.color;
+          render();
+        });
+      });
+
+      // Editar nota
+      document.querySelectorAll('.highlight-action-btn[data-edit]').forEach(el => {
+        el.addEventListener('click', () => {
+          const realIdx = parseInt(el.dataset.edit);
+          editingNote = { highlightIndex: realIdx };
+          render();
+          document.getElementById('note-textarea')?.focus();
+        });
+      });
+
+      // Cancelar edicao
+      document.querySelectorAll('[data-cancel]').forEach(el => {
+        el.addEventListener('click', () => {
+          editingNote = null;
+          render();
+        });
+      });
+
+      // Salvar nota no Kindle
+      document.querySelectorAll('[data-save]').forEach(el => {
+        el.addEventListener('click', async () => {
+          const hi = parseInt(el.dataset.save);
+          const textarea = document.getElementById('note-textarea');
+          const newNote = textarea?.value || '';
+          el.disabled = true;
+          el.textContent = 'Salvando...';
+          try {
+            const res = await fetch(`/api/books/${selectedBook}/highlights/${hi}/note`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ note: newNote }),
+            });
+            const data = await res.json();
+            books[selectedBook].highlights[hi].note = data.note;
+            editingNote = null;
+            render();
+          } catch (err) {
+            el.textContent = 'Erro!';
+            setTimeout(() => { el.textContent = 'Salvar no Kindle'; el.disabled = false; }, 2000);
+          }
+        });
+      });
+
+      document.querySelectorAll('.highlight-action-btn[data-copy]').forEach(el => {
+        el.addEventListener('click', () => {
+          const idx = parseInt(el.dataset.copy);
+          const text = filteredHighlights[idx]?.text;
+          if (text) {
+            navigator.clipboard.writeText(text);
+            el.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" style="width:14px;height:14px;"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5" /></svg>';
+            setTimeout(() => { el.innerHTML = COPY_ICON; }, 1500);
+          }
+        });
+      });
+
+      const resyncBtn = document.getElementById('btn-resync');
+      if (resyncBtn) {
+        resyncBtn.addEventListener('click', handleLogin);
+      }
+    }
+
+    // ==================== ACTIONS ====================
+
+    async function handleLogin() {
+      const btn = document.getElementById('btn-login') || document.getElementById('btn-resync');
+      const status = document.getElementById('status');
+
+      if (btn) btn.disabled = true;
+      if (status) status.innerHTML = '<span class="spinner"></span> Abrindo login da Amazon...';
+
+      try {
+        await fetch('/api/login', { method: 'POST' });
+        if (status) status.innerHTML = '<span class="spinner"></span> Aguardando login no Chrome...';
+
+        let loggedIn = false;
+        while (!loggedIn) {
+          const res = await fetch('/api/login/status');
+          const data = await res.json();
+          if (data.status === 'logged_in') {
+            loggedIn = true;
+          } else if (data.status === 'browser_closed') {
+            if (status) status.textContent = '';
+            if (btn) btn.disabled = false;
+            return;
+          } else {
+            await new Promise(r => setTimeout(r, 2000));
+          }
+        }
+
+        if (status) status.innerHTML = '<span class="spinner"></span> Sincronizando livros e destaques...';
+
+        // Inicia sync em background e polled progresso
+        const syncPromise = fetch('/api/sync', { method: 'POST' }).then(r => r.json());
+
+        // Poll progresso enquanto sync roda
+        const progressInterval = setInterval(async () => {
+          try {
+            const pRes = await fetch('/api/sync/progress');
+            const progress = await pRes.json();
+            if (progress.total > 0 && status) {
+              status.innerHTML = `<span class="spinner"></span> Extraindo livro ${progress.current}/${progress.total}: ${progress.bookTitle}`;
+            }
+          } catch {}
+        }, 1500);
+
+        const syncData = await syncPromise;
+        clearInterval(progressInterval);
+
+        console.log('=== RESULTADO DO SCRAPING ===');
+        console.log('Total de livros:', syncData.books?.length);
+        syncData.books?.forEach((book, i) => {
+          console.log(`\nLivro ${i + 1}: ${book.title}`);
+          console.log(`  Autor: ${book.author}`);
+          console.log(`  ASIN: ${book.asin}`);
+          console.log(`  Highlights: ${book.highlights.length}`);
+          book.highlights.forEach((h, j) => {
+            console.log(`  [${j + 1}] ${h.text.substring(0, 100)}...`);
+          });
+        });
+
+        if (syncData.books) {
+          books = syncData.books;
+          selectedBook = books.length > 0 ? 0 : null;
+          render();
+        }
+      } catch (err) {
+        console.error('Erro:', err);
+        if (status) status.textContent = 'Erro: ' + err.message;
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // ==================== INIT ====================
+    render();
+  </script>
+</body>
+</html>

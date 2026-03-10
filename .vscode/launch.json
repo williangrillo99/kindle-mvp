@@ -1,0 +1,24 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:kindle-mvp}/ios-app",
+            "name": "Debug KindleSync (ios-app)",
+            "target": "KindleSync",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug KindleSync (ios-app)"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:kindle-mvp}/ios-app",
+            "name": "Release KindleSync (ios-app)",
+            "target": "KindleSync",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release KindleSync (ios-app)"
+        }
+    ]
+}
