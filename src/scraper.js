@@ -131,10 +131,14 @@ async function scrapeAll() {
         const titleEl = el.querySelector('h2') || el.querySelector('p');
         const authorEl = el.querySelector('p:last-of-type');
         const imgEl = el.querySelector('img');
-        const asin = el.getAttribute('id') || el.getAttribute('data-asin') || '';
+        const rawId = el.getAttribute('id') || '';
+        // ID pode ser "kp-notebook-library-each-book-B0XXXXXX" ou "B0XXXXXX"
+        const asin = el.getAttribute('data-asin')
+          || rawId.replace(/^kp-notebook-library-each-book-/, '').replace(/^kp-notebook-library-/, '')
+          || '';
 
         return {
-          asin: asin.replace('kp-notebook-library-', ''),
+          asin,
           title: titleEl ? titleEl.textContent.trim() : 'Sem título',
           author: authorEl ? authorEl.textContent.trim() : 'Autor desconhecido',
           cover: imgEl ? imgEl.src : '',
@@ -142,6 +146,9 @@ async function scrapeAll() {
         };
       })
   );
+
+  // Log ASINs para debug
+  books.forEach((b, idx) => console.log(`  Livro ${idx}: ASIN="${b.asin}" - ${b.title}`));
 
   syncProgress = { current: 0, total: books.length, bookTitle: '' };
 
@@ -186,28 +193,93 @@ async function scrapeAll() {
         console.log('  === FIM ===');
       }
 
-      // Extrai highlights
-      books[i].highlights = await page.evaluate(() => {
+      // Extrai highlights E notas standalone (com capitulo)
+      const extractResult = await page.evaluate(() => {
         const results = [];
+        const debug = [];
         const seen = new Set();
-        const highlightEls = document.querySelectorAll('#kp-notebook-annotations #highlight');
+        let currentChapter = '';
 
-        highlightEls.forEach((el) => {
-          const text = el.textContent.trim();
-          if (!text || seen.has(text)) return;
-          seen.add(text);
-
-          // Sobe no DOM ate encontrar o container com annotationHighlightHeader
-          let container = el.parentElement;
-          for (let depth = 0; depth < 10 && container; depth++) {
-            if (container.querySelector('#annotationHighlightHeader')) break;
-            if (container.id === 'kp-notebook-annotations') { container = el.parentElement; break; }
-            container = container.parentElement;
+        // Percorre TODOS os filhos de #kp-notebook-annotations em ordem
+        // para rastrear headers de capitulo e associar a cada highlight
+        const annotationsRoot = document.querySelector('#kp-notebook-annotations');
+        // Debug: mostra filhos diretos de #kp-notebook-annotations para descobrir estrutura
+        const chapterDebug = [];
+        if (annotationsRoot) {
+          const directChildren = annotationsRoot.children;
+          for (let i = 0; i < Math.min(directChildren.length, 15); i++) {
+            const child = directChildren[i];
+            chapterDebug.push({
+              tag: child.tagName,
+              id: child.id || '',
+              classes: child.className || '',
+              text: child.textContent.trim().substring(0, 150),
+            });
           }
+        }
 
-          const noteEl = container?.querySelector('#note');
-          const locationEl = container?.querySelector('#annotationHighlightHeader');
-          const colorEl = container?.querySelector('[class*="kp-notebook-highlight-"]');
+        // Encontra headers de capitulo e mapeia cada container ao seu capitulo
+        const chapterMap = new Map();
+        let chapter = '';
+        // Percorre filhos diretos em ordem para rastrear capitulos
+        if (annotationsRoot) {
+          const directChildren = annotationsRoot.children;
+          for (let i = 0; i < directChildren.length; i++) {
+            const el = directChildren[i];
+            // Checa se eh um header de secao/capitulo (nao eh um container de anotacao)
+            const isAnnotation = el.id && el.id.startsWith('annotationContainer');
+            const hasAnnotationHeader = el.querySelector && (el.querySelector('#annotationHighlightHeader') || el.querySelector('#annotationNoteHeader'));
+
+            if (!isAnnotation && !hasAnnotationHeader) {
+              const text = el.textContent.trim();
+              if (text && text.length > 1 && !text.match(/^(Yellow|Blue|Pink|Orange)\s+highlight/i) &&
+                  !text.match(/^(Destaque|Nota|Marcador)/i)) {
+                chapter = text;
+              }
+            }
+            // Associa containers de anotacao (diretos ou nested) ao capitulo atual
+            if (isAnnotation) {
+              chapterMap.set(el, chapter);
+            }
+            // Tambem checa sub-containers
+            const subContainers = el.querySelectorAll ? el.querySelectorAll('[id^="annotationContainer"]') : [];
+            subContainers.forEach(sc => chapterMap.set(sc, chapter));
+          }
+        }
+
+        // Pega containers validos
+        const containers = annotationsRoot ? annotationsRoot.querySelectorAll('[id^="annotationContainer"], .kp-notebook-row-separator, .a-row') : [];
+        const validContainers = [];
+        containers.forEach(c => {
+          if (c.querySelector('#annotationHighlightHeader') || c.querySelector('#annotationNoteHeader')) {
+            validContainers.push(c);
+          }
+        });
+
+        const targets = validContainers.length > 0 ? validContainers : [];
+
+        // Abordagem por containers
+        targets.forEach((container) => {
+          currentChapter = chapterMap.get(container) || '';
+          const highlightEl = container.querySelector('#highlight');
+          const noteEl = container.querySelector('#note');
+          const locationEl = container.querySelector('#annotationHighlightHeader') || container.querySelector('#annotationNoteHeader');
+          const colorEl = container.querySelector('[class*="kp-notebook-highlight-"]');
+
+          const highlightText = highlightEl ? highlightEl.textContent.trim() : '';
+          const noteText = noteEl ? noteEl.textContent.trim() : '';
+
+          // Filtra placeholders de nota
+          const notePlaceholders = ['Add a note', 'Adicionar uma nota', 'Adicionar anotação', ''];
+          const note = notePlaceholders.includes(noteText) ? '' : noteText;
+
+          // Se nao tem highlight nem nota real, ignora
+          if (!highlightText && !note) return;
+
+          // Deduplicacao
+          const dedupeKey = highlightText || note;
+          if (seen.has(dedupeKey)) return;
+          seen.add(dedupeKey);
 
           let color = 'yellow';
           if (colorEl) {
@@ -216,41 +288,49 @@ async function scrapeAll() {
             if (match && match[1] !== 'color') color = match[1];
           }
 
-          const note = noteEl ? noteEl.textContent.trim() : '';
-
-          // Header completo para extrair tipo, pagina e data
           const headerText = locationEl ? locationEl.textContent.trim() : '';
 
-          // Log debug dos primeiros 3 highlights para ver formato real
-          if (results.length < 3) {
-            console.log('[DEBUG header]', headerText);
-            // Verifica se ha outros elementos com info de pagina/data
-            const allTexts = [];
-            container?.querySelectorAll('span, div, p').forEach(child => {
-              const t = child.textContent.trim();
-              if (t && t.length < 200 && t !== text) allTexts.push(t);
+          // Debug: primeiros 5 para o terminal Node
+          if (results.length < 5) {
+            debug.push({
+              headerText,
+              chapter: currentChapter,
+              highlightText: highlightText.substring(0, 100),
+              noteRaw: noteText,
+              hasHighlightEl: !!highlightEl,
+              hasNoteEl: !!noteEl,
+              containerHTML: container.innerHTML.substring(0, 1500),
             });
-            if (allTexts.length > 0) console.log('[DEBUG container texts]', JSON.stringify(allTexts.slice(0, 10)));
           }
 
-          // Tipo de anotacao (Highlight, Note, Bookmark)
+          // Tipo de anotacao
           let type = 'highlight';
-          if (/\bNote\b/i.test(headerText) || /\bNota\b/i.test(headerText)) type = 'note';
-          else if (/\bBookmark\b/i.test(headerText) || /\bMarcador\b/i.test(headerText)) type = 'bookmark';
+          if (!highlightText && note) {
+            type = 'note';
+          } else if (/\bNote\b/i.test(headerText) || /\bNota\b/i.test(headerText)) {
+            type = 'note';
+          } else if (/\bBookmark\b/i.test(headerText) || /\bMarcador\b/i.test(headerText)) {
+            type = 'bookmark';
+          }
 
-          // Pagina — ex: "Page 42", "Página 42", "page 42", "pag 42", "pág. 42"
+          // Pagina
           let pageNum = '';
           const pageMatch = headerText.match(/(?:Page|Página|Pág\.?|Pag\.?)\s+(\d+)/i);
           if (pageMatch) pageNum = pageMatch[1];
 
-          // Location number — ex: "Location 1234", "Posição 1234", "Loc. 1234"
+          // Location number
           let locationNum = '';
-          const locMatch = headerText.match(/(?:Location|Posição|Loc\.?)\s+([\d-]+)/i);
+          const locMatch = headerText.match(/(?:Location|Posição|Local|Loc\.?)\s*:?\s*([\d-]+)/i);
           if (locMatch) locationNum = locMatch[1];
 
-          // Data — procura em todo o container, nao apenas no header
+          if (!pageNum && !locationNum) {
+            const numMatch = headerText.match(/(\d+[\d-]*)/);
+            if (numMatch) locationNum = numMatch[1];
+          }
+
+          // Data
           let date = '';
-          const allContainerText = container ? container.textContent : '';
+          const allContainerText = container.textContent || '';
           const dateMatch = allContainerText.match(/(?:Added on|Adicionado em)\s+(.+?)(?:\n|$)/i)
             || allContainerText.match(/(\w+day,\s+\w+\s+\d{1,2},\s+\d{4})/i)
             || allContainerText.match(/(\d{1,2}\s+de\s+\w+\s+de\s+\d{4})/i)
@@ -259,19 +339,80 @@ async function scrapeAll() {
           if (dateMatch) date = dateMatch[1].trim();
 
           results.push({
-            text,
-            note: (note && note !== 'Add a note' && note !== 'Adicionar uma nota') ? note : '',
+            text: highlightText || note,
+            note: highlightText ? note : '',
             location: headerText,
             color,
             type,
             page: pageNum,
             locationNum,
             date,
+            chapter: currentChapter,
           });
         });
 
-        return results;
+        // Fallback: se nao encontrou containers, usa abordagem antiga por #highlight
+        if (results.length === 0) {
+          const highlightEls = document.querySelectorAll('#kp-notebook-annotations #highlight');
+          highlightEls.forEach((el) => {
+            const text = el.textContent.trim();
+            if (!text || seen.has(text)) return;
+            seen.add(text);
+
+            let container = el.parentElement;
+            for (let depth = 0; depth < 10 && container; depth++) {
+              if (container.querySelector('#annotationHighlightHeader')) break;
+              if (container.id === 'kp-notebook-annotations') { container = el.parentElement; break; }
+              container = container.parentElement;
+            }
+
+            const noteEl = container?.querySelector('#note');
+            const noteText = noteEl ? noteEl.textContent.trim() : '';
+            const locationEl = container?.querySelector('#annotationHighlightHeader');
+            const headerText = locationEl ? locationEl.textContent.trim() : '';
+            const notePlaceholders = ['Add a note', 'Adicionar uma nota', 'Adicionar anotação', ''];
+            const note = notePlaceholders.includes(noteText) ? '' : noteText;
+
+            results.push({
+              text,
+              note,
+              location: headerText,
+              color: 'yellow',
+              type: 'highlight',
+              page: '',
+              locationNum: '',
+              date: '',
+            });
+          });
+        }
+
+        return { results, debug, chapterDebug };
       });
+
+      books[i].highlights = extractResult.results;
+
+      // Log debug no terminal Node (so no primeiro livro)
+      if (i === 0) {
+        if (extractResult.chapterDebug && extractResult.chapterDebug.length > 0) {
+          console.log('  === DEBUG: Filhos diretos de #kp-notebook-annotations ===');
+          extractResult.chapterDebug.forEach((c, idx) => {
+            console.log(`  [${idx}] <${c.tag}> id="${c.id}" class="${c.classes}" text="${c.text}"`);
+          });
+          console.log('  === FIM CHAPTER DEBUG ===');
+        }
+        if (extractResult.debug.length > 0) {
+          console.log('  === DEBUG: Formato dos highlights ===');
+          extractResult.debug.forEach((d, idx) => {
+            console.log(`  [${idx}] header: "${d.headerText}" | chapter: "${d.chapter}"`);
+            console.log(`  [${idx}] hasHighlightEl: ${d.hasHighlightEl}, hasNoteEl: ${d.hasNoteEl}`);
+            console.log(`  [${idx}] highlightText: "${d.highlightText}"`);
+            console.log(`  [${idx}] noteRaw: "${d.noteRaw}"`);
+            console.log(`  [${idx}] containerHTML:`, d.containerHTML.substring(0, 500));
+            console.log('  ---');
+          });
+          console.log('  === FIM DEBUG ===');
+        }
+      }
 
       console.log(`  ${books[i].highlights.length} destaques encontrados`);
     } catch (err) {
