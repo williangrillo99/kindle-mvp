@@ -116,15 +116,39 @@ async function saveSession() {
 async function scrapeAll() {
   if (!page) throw new Error('Browser não iniciado');
 
-  // Intercepta TODAS as chamadas de rede para descobrir APIs
+  // Intercepta chamadas de rede relacionadas a annotations
+  page.on('response', async res => {
+    const url = res.url();
+    if (url.includes('getAnnotations')) {
+      try {
+        const body = await res.text();
+        console.log(`[NET] getAnnotations response (${body.length} chars): ${body.substring(0, 1000)}`);
+      } catch {}
+    }
+    if (url.includes('updateAnnotations')) {
+      try {
+        const body = await res.text();
+        console.log(`[NET] updateAnnotations response: ${body.substring(0, 500)}`);
+      } catch {}
+    }
+    if (url.includes('csrf')) {
+      try {
+        const body = await res.text();
+        console.log(`[NET] CSRF response: ${body.substring(0, 200)}`);
+      } catch {}
+    }
+  });
   page.on('request', req => {
     const url = req.url();
-    // Ignora assets estáticos
-    if (url.match(/\.(js|css|png|jpg|gif|svg|woff|ico|map)(\?|$)/)) return;
-    if (url.includes('google') || url.includes('analytics') || url.includes('metrics')) return;
-    console.log(`[NET] ${req.method()} ${url}`);
-    const post = req.postData();
-    if (post) console.log(`[NET]   Body: ${post.substring(0, 500)}`);
+    if (url.includes('getAnnotations') || url.includes('updateAnnotations') || url.includes('csrf')) {
+      console.log(`[NET] ${req.method()} ${url}`);
+      const post = req.postData();
+      if (post) console.log(`[NET]   Body: ${post.substring(0, 1000)}`);
+      const headers = req.headers();
+      console.log(`[NET]   Headers: ${JSON.stringify(Object.keys(headers))}`);
+      if (headers['x-csrf-token']) console.log(`[NET]   CSRF: ${headers['x-csrf-token']}`);
+      if (headers['x-adp-token']) console.log(`[NET]   ADP: ${headers['x-adp-token']}`);
+    }
   });
 
   // 1) Navega para a biblioteca do Cloud Reader
