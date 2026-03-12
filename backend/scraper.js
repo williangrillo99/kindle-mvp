@@ -116,38 +116,19 @@ async function saveSession() {
 async function scrapeAll() {
   if (!page) throw new Error('Browser não iniciado');
 
-  // Intercepta chamadas de rede relacionadas a annotations
+  // Captura dados brutos de annotations da API para cada livro
+  const annotationsCache = {};
   page.on('response', async res => {
     const url = res.url();
     if (url.includes('getAnnotations')) {
       try {
-        const body = await res.text();
-        console.log(`[NET] getAnnotations response (${body.length} chars): ${body.substring(0, 1000)}`);
+        const body = await res.json();
+        const asinMatch = url.match(/asin=([^&]+)/);
+        if (asinMatch && body.annotations) {
+          annotationsCache[asinMatch[1]] = body.annotations;
+          console.log(`[NET] Cached ${body.annotations.length} annotations for ${asinMatch[1]}`);
+        }
       } catch {}
-    }
-    if (url.includes('updateAnnotations')) {
-      try {
-        const body = await res.text();
-        console.log(`[NET] updateAnnotations response: ${body.substring(0, 500)}`);
-      } catch {}
-    }
-    if (url.includes('csrf')) {
-      try {
-        const body = await res.text();
-        console.log(`[NET] CSRF response: ${body.substring(0, 200)}`);
-      } catch {}
-    }
-  });
-  page.on('request', req => {
-    const url = req.url();
-    if (url.includes('getAnnotations') || url.includes('updateAnnotations') || url.includes('csrf')) {
-      console.log(`[NET] ${req.method()} ${url}`);
-      const post = req.postData();
-      if (post) console.log(`[NET]   Body: ${post.substring(0, 1000)}`);
-      const headers = req.headers();
-      console.log(`[NET]   Headers: ${JSON.stringify(Object.keys(headers))}`);
-      if (headers['x-csrf-token']) console.log(`[NET]   CSRF: ${headers['x-csrf-token']}`);
-      if (headers['x-adp-token']) console.log(`[NET]   ADP: ${headers['x-adp-token']}`);
     }
   });
 
@@ -333,17 +314,30 @@ async function scrapeAll() {
         return results;
       });
 
-      bookList[i].highlights = highlights.map(h => ({
-        text: h.text,
-        note: h.note,
-        location: h.location,
-        color: h.color,
-        type: h.type,
-        page: h.page,
-        locationNum: '',
-        date: '',
-        chapter: h.chapter,
-      }));
+      // Enriquece highlights com dados da API (position, guid, dsn)
+      const apiAnnotations = annotationsCache[asin] || [];
+      const apiHighlights = apiAnnotations.filter(a => a.type === 'kindle.highlight');
+
+      bookList[i].highlights = highlights.map((h, idx) => {
+        const apiData = apiHighlights[idx] || {};
+        return {
+          text: h.text,
+          note: h.note,
+          location: h.location,
+          color: h.color,
+          type: h.type,
+          page: h.page,
+          locationNum: '',
+          date: '',
+          chapter: h.chapter,
+          // Dados da API para edição de notas
+          _position: apiData.position || null,
+          _start: apiData.start || null,
+          _end: apiData.end || null,
+          _guid: apiData.guid || null,
+          _dsn: apiData.dsn || null,
+        };
+      });
 
       const notesCount = bookList[i].highlights.filter(h => h.note).length;
       console.log(`  ${bookList[i].highlights.length} destaques encontrados (${notesCount} com notas)`);
@@ -358,8 +352,12 @@ async function scrapeAll() {
 }
 
 // Edita nota via HTTP usando cookies da sessão (sem browser)
-async function editNote(asin, highlightIndex, newNote) {
+async function editNote(asin, highlightIndex, newNote, highlightData) {
   console.log(`[editNote] Editando nota via HTTP - ASIN=${asin}, index=${highlightIndex}`);
+
+  if (!highlightData || !highlightData._end || !highlightData._guid || !highlightData._dsn) {
+    throw new Error('Dados da annotation não encontrados. Faça sync novamente.');
+  }
 
   // Carrega cookies da sessão
   if (!fs.existsSync(SESSION_FILE)) {
@@ -369,7 +367,6 @@ async function editNote(asin, highlightIndex, newNote) {
   const session = JSON.parse(fs.readFileSync(SESSION_FILE, 'utf-8'));
   const cookies = session.cookies || [];
 
-  // Monta cookie string para os domínios da Amazon
   const cookieStr = cookies
     .filter(c => c.domain.includes('amazon'))
     .map(c => `${c.name}=${c.value}`)
@@ -379,35 +376,49 @@ async function editNote(asin, highlightIndex, newNote) {
     throw new Error('Cookies da Amazon não encontrados na sessão.');
   }
 
-  // Busca o annotationId correspondente ao highlightIndex
-  // Precisamos do annotationId que está no data-testid dos wrappers (capturado durante o scraping)
-  // Por enquanto, usa a API updateAnnotations do Cloud Reader
+  const headers = {
+    'Cookie': cookieStr,
+    'Content-Type': 'application/json',
+    'Accept': 'application/json',
+    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+    'Origin': CLOUD_READER_URL,
+    'Referer': `${CLOUD_READER_URL}/?asin=${asin}`,
+  };
+
+  // 1) Busca CSRF token
+  const csrfRes = await fetch(`${CLOUD_READER_URL}/reader/api/csrf/getToken`, { headers });
+  const csrfToken = await csrfRes.text();
+  console.log(`[editNote] CSRF token: ${csrfToken.substring(0, 30)}...`);
+
+  // 2) Cria/atualiza nota na posição end do highlight
+  const noteAnnotation = {
+    action: 'create',
+    asin: asin,
+    context: null,
+    deviceType: null,
+    dsn: highlightData._dsn,
+    end: highlightData._end,
+    guid: highlightData._guid,
+    highlightColor: null,
+    isSample: null,
+    modifiedTimestamp: Date.now(),
+    note: newNote + '\n',
+    position: highlightData._end,
+    positionType: 'Mobi7',
+    start: highlightData._end,
+    type: 'kindle.note',
+  };
 
   const updateUrl = `${CLOUD_READER_URL}/service/mobile/reader/updateAnnotations`;
-  console.log(`[editNote] Chamando: ${updateUrl}`);
-
-  // Formato da API do Kindle Cloud Reader para adicionar/editar nota
-  const body = {
-    asin: asin,
-    customerId: '',  // Será extraído dos cookies
-    annotations: [{
-      type: 'note',
-      text: newNote || '',
-      highlightIndex: highlightIndex,
-    }],
-  };
+  console.log(`[editNote] POST ${updateUrl}`);
 
   const updateRes = await fetch(updateUrl, {
     method: 'POST',
     headers: {
-      'Cookie': cookieStr,
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-      'Origin': CLOUD_READER_URL,
-      'Referer': `${CLOUD_READER_URL}/?asin=${asin}`,
+      ...headers,
+      'x-csrf-token': csrfToken,
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify([noteAnnotation]),
   });
 
   const responseText = await updateRes.text();
@@ -417,7 +428,7 @@ async function editNote(asin, highlightIndex, newNote) {
     throw new Error(`API Amazon retornou ${updateRes.status}: ${responseText.substring(0, 200)}`);
   }
 
-  console.log('[editNote] Nota salva com sucesso via HTTP');
+  console.log('[editNote] Nota salva com sucesso no Kindle');
   return { status: 'ok', note: newNote };
 }
 

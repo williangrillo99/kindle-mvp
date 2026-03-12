@@ -65,7 +65,7 @@ app.put('/api/books/:bookIndex/highlights/:highlightIndex/note', async (req, res
   }
 
   try {
-    await editNote(booksData[bi].asin, hi, note || '');
+    await editNote(booksData[bi].asin, hi, note || '', booksData[bi].highlights[hi]);
     booksData[bi].highlights[hi].note = note || '';
     res.json({ status: 'ok', note: booksData[bi].highlights[hi].note });
   } catch (err) {
