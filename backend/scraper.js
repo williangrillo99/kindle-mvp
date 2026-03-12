@@ -116,8 +116,15 @@ async function saveSession() {
 async function scrapeAll() {
   if (!page) throw new Error('Browser não iniciado');
 
-  // Captura dados brutos de annotations da API para cada livro
+  // Captura dados brutos de annotations e x-adp-session-token
   const annotationsCache = {};
+  let adpSessionToken = '';
+  page.on('request', req => {
+    const url = req.url();
+    // Captura x-adp-session-token de qualquer request
+    const adp = req.headers()['x-adp-session-token'];
+    if (adp) adpSessionToken = adp;
+  });
   page.on('response', async res => {
     const url = res.url();
     if (url.includes('getAnnotations')) {
@@ -129,16 +136,6 @@ async function scrapeAll() {
           console.log(`[NET] Cached ${body.annotations.length} annotations for ${asinMatch[1]}`);
         }
       } catch {}
-    }
-  });
-  // Captura requests de updateAnnotations para debug
-  page.on('request', req => {
-    const url = req.url();
-    if (url.includes('updateAnnotations')) {
-      console.log(`[NET-REQ] ${req.method()} ${url}`);
-      console.log(`[NET-REQ] Headers: ${JSON.stringify(req.headers())}`);
-      const post = req.postData();
-      if (post) console.log(`[NET-REQ] Body: ${post}`);
     }
   });
 
@@ -357,6 +354,13 @@ async function scrapeAll() {
     }
   }
 
+  // Salva o x-adp-session-token para uso no editNote
+  if (adpSessionToken) {
+    const tokenFile = path.join(__dirname, '..', '.adp-token.json');
+    fs.writeFileSync(tokenFile, JSON.stringify({ token: adpSessionToken }));
+    console.log(`[scrapeAll] ADP session token salvo (${adpSessionToken.substring(0, 30)}...)`);
+  }
+
   await saveSession();
   return bookList;
 }
@@ -386,6 +390,16 @@ async function editNote(asin, highlightIndex, newNote, highlightData) {
     throw new Error('Cookies da Amazon não encontrados na sessão.');
   }
 
+  // Carrega x-adp-session-token
+  const tokenFile = path.join(__dirname, '..', '.adp-token.json');
+  let adpToken = '';
+  if (fs.existsSync(tokenFile)) {
+    adpToken = JSON.parse(fs.readFileSync(tokenFile, 'utf-8')).token || '';
+  }
+  if (!adpToken) {
+    throw new Error('ADP session token não encontrado. Faça sync novamente.');
+  }
+
   const headers = {
     'Cookie': cookieStr,
     'Content-Type': 'application/json',
@@ -393,6 +407,7 @@ async function editNote(asin, highlightIndex, newNote, highlightData) {
     'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
     'Origin': CLOUD_READER_URL,
     'Referer': `${CLOUD_READER_URL}/?asin=${asin}`,
+    'x-adp-session-token': adpToken,
   };
 
   // 1) Busca CSRF token
