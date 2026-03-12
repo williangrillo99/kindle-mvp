@@ -131,6 +131,16 @@ async function scrapeAll() {
       } catch {}
     }
   });
+  // Captura requests de updateAnnotations para debug
+  page.on('request', req => {
+    const url = req.url();
+    if (url.includes('updateAnnotations')) {
+      console.log(`[NET-REQ] ${req.method()} ${url}`);
+      console.log(`[NET-REQ] Headers: ${JSON.stringify(req.headers())}`);
+      const post = req.postData();
+      if (post) console.log(`[NET-REQ] Body: ${post}`);
+    }
+  });
 
   // 1) Navega para a biblioteca do Cloud Reader
   console.log('Navegando para Cloud Reader Library...');
@@ -409,15 +419,13 @@ async function editNote(asin, highlightIndex, newNote, highlightData) {
     type: 'kindle.note',
   };
 
-  // Formato: objeto com clientVersion e annotations array
-  const body = {
-    clientVersion: 20000100,
-    annotations: [noteAnnotation],
-  };
 
-  const updateUrl = `${CLOUD_READER_URL}/service/mobile/reader/updateAnnotations`;
+  const updateUrl = `${CLOUD_READER_URL}/service/mobile/reader/updateAnnotations?clientVersion=20000100`;
   console.log(`[editNote] POST ${updateUrl}`);
-  console.log(`[editNote] Body: ${JSON.stringify(body).substring(0, 500)}`);
+
+  // Envia apenas o array de annotations (formato Coral)
+  const annotationsBody = JSON.stringify([noteAnnotation]);
+  console.log(`[editNote] Body: ${annotationsBody.substring(0, 500)}`);
 
   const updateRes = await fetch(updateUrl, {
     method: 'POST',
@@ -425,7 +433,7 @@ async function editNote(asin, highlightIndex, newNote, highlightData) {
       ...headers,
       'x-csrf-token': csrfToken,
     },
-    body: JSON.stringify(body),
+    body: annotationsBody,
   });
 
   const responseText = await updateRes.text();
