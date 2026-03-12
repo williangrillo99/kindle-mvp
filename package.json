@@ -1,16 +1,10 @@
 {
   "name": "kindle-mvp",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "start": "node src/server.js",
-    "dev": "node --watch src/server.js"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "type": "commonjs",
+  "scripts": {
+    "dev": "node api/server.js"
+  },
   "dependencies": {
     "express": "^5.2.1",
     "playwright": "^1.58.2"
