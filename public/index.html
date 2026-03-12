@@ -196,6 +196,33 @@
       text-overflow: ellipsis;
     }
 
+    .book-progress {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 4px;
+      height: 4px;
+      background: var(--bg-card);
+      border-radius: 2px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .book-progress-bar {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 2px;
+      transition: width 0.3s;
+    }
+
+    .book-progress-text {
+      position: absolute;
+      right: 0;
+      top: -14px;
+      font-size: 9px;
+      color: var(--text-muted);
+    }
+
     .book-item .highlight-count {
       font-size: 10px;
       color: var(--text-muted);
@@ -617,11 +644,400 @@
       stroke: var(--text-muted);
     }
 
+    /* ==================== SPLIT VIEW (nota vinculada) ==================== */
+    .content-area {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+    }
+
+    .content-area .main {
+      flex: 1;
+    }
+
+    .split-right {
+      width: 380px;
+      min-width: 320px;
+      display: flex;
+      flex-direction: column;
+      background: var(--bg-secondary);
+      border-left: 1px solid var(--border);
+    }
+
+    .split-right-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .split-right-header h3 {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+
+    .split-right-close {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 4px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      transition: all 0.15s;
+    }
+
+    .split-right-close:hover {
+      color: var(--text-primary);
+      background: var(--bg-hover);
+    }
+
+    .split-right-close svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    .split-right-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+    }
+
+    .split-note-highlight {
+      font-size: 14px;
+      line-height: 1.7;
+      color: var(--text-primary);
+      padding: 16px;
+      background: var(--bg-card);
+      border-radius: 8px;
+      border-left: 3px solid var(--yellow);
+      margin-bottom: 16px;
+    }
+
+    .split-note-highlight.color-blue { border-left-color: var(--blue); }
+    .split-note-highlight.color-pink { border-left-color: var(--pink); }
+    .split-note-highlight.color-orange { border-left-color: var(--orange); }
+
+    .split-note-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .split-note-text {
+      font-size: 14px;
+      line-height: 1.7;
+      color: var(--accent-hover);
+      font-style: italic;
+      padding: 16px;
+      background: rgba(92, 107, 192, 0.1);
+      border-radius: 8px;
+    }
+
+    .split-note-meta {
+      margin-top: 16px;
+      font-size: 11px;
+      color: var(--text-muted);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .split-note-meta .meta-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .split-note-meta svg {
+      width: 12px;
+      height: 12px;
+      stroke: var(--text-muted);
+    }
+
+    .highlight-card.selected {
+      background: var(--bg-hover);
+      outline: 1px solid var(--accent);
+      outline-offset: -1px;
+    }
+
+    .highlight-card.has-note {
+      cursor: pointer;
+    }
+
+    .note-indicator {
+      background: rgba(92, 107, 192, 0.15) !important;
+      color: var(--accent-hover) !important;
+    }
+
+    .note-indicator svg {
+      stroke: var(--accent-hover) !important;
+    }
+
     /* ==================== SCROLLBAR ==================== */
     ::-webkit-scrollbar { width: 6px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
     ::-webkit-scrollbar-thumb:hover { background: var(--border-light); }
+
+    /* ==================== MOBILE TOGGLE ==================== */
+    .mobile-header {
+      display: none;
+      padding: 12px 16px;
+      background: var(--bg-sidebar);
+      border-bottom: 1px solid var(--border);
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 20;
+    }
+
+    .mobile-header h1 {
+      font-size: 16px;
+      font-weight: 700;
+    }
+
+    .mobile-header h1 span { color: var(--accent); }
+
+    .btn-menu {
+      background: none;
+      border: none;
+      color: var(--text-primary);
+      cursor: pointer;
+      padding: 6px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+    }
+
+    .btn-menu:hover { background: var(--bg-hover); }
+
+    .btn-menu svg {
+      width: 22px;
+      height: 22px;
+    }
+
+    .sidebar-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 29;
+    }
+
+    .btn-back {
+      background: none;
+      border: none;
+      color: var(--text-secondary);
+      cursor: pointer;
+      padding: 6px;
+      border-radius: 6px;
+      display: none;
+      align-items: center;
+      gap: 4px;
+      font-size: 12px;
+    }
+
+    .btn-back svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    .btn-back:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+    /* ==================== RESPONSIVE: TABLET (768-1024px) ==================== */
+    @media (max-width: 1024px) {
+      .sidebar {
+        width: 240px;
+        min-width: 240px;
+      }
+
+      .book-detail-header {
+        padding: 18px 20px;
+        gap: 14px;
+      }
+
+      .book-detail-cover {
+        width: 50px;
+        height: 70px;
+      }
+
+      .book-detail-info h2 { font-size: 16px; }
+
+      .book-detail-stats {
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .toolbar {
+        padding: 10px 20px;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .filter-pills { flex-wrap: wrap; }
+
+      .search-bar { width: 180px; }
+
+      .highlights-container { padding: 16px 20px; }
+
+      .highlight-card { padding: 14px 16px; }
+
+      .split-right {
+        width: 320px;
+        min-width: 280px;
+      }
+    }
+
+    /* ==================== RESPONSIVE: MOBILE (<768px) ==================== */
+    @media (max-width: 767px) {
+      #app {
+        flex-direction: column;
+      }
+
+      .mobile-header {
+        display: flex;
+      }
+
+      .sidebar {
+        position: fixed;
+        top: 0;
+        left: -100%;
+        width: 85%;
+        max-width: 320px;
+        min-width: unset;
+        height: 100vh;
+        z-index: 30;
+        transition: left 0.3s ease;
+      }
+
+      .sidebar.open {
+        left: 0;
+      }
+
+      .sidebar.open ~ .sidebar-overlay,
+      .sidebar-overlay.open {
+        display: block;
+      }
+
+      .content-area {
+        flex-direction: column;
+      }
+
+      .content-area .main {
+        min-height: 0;
+      }
+
+      .book-detail-header {
+        padding: 14px 16px;
+        gap: 12px;
+      }
+
+      .book-detail-cover {
+        width: 44px;
+        height: 62px;
+      }
+
+      .book-detail-cover-placeholder {
+        width: 44px;
+        height: 62px;
+      }
+
+      .book-detail-info h2 {
+        font-size: 15px;
+      }
+
+      .book-detail-info .detail-author {
+        font-size: 13px;
+        margin-bottom: 8px;
+      }
+
+      .book-detail-stats {
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .book-detail-stats .stat-badge {
+        font-size: 11px;
+        padding: 3px 8px;
+      }
+
+      .toolbar {
+        padding: 10px 16px;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+      }
+
+      .toolbar-left {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      .filter-pills {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        padding-bottom: 2px;
+      }
+
+      .filter-pill {
+        white-space: nowrap;
+        flex-shrink: 0;
+      }
+
+      .search-bar {
+        width: 100%;
+      }
+
+      .highlights-container {
+        padding: 12px 16px;
+      }
+
+      .highlight-card {
+        padding: 14px 16px;
+      }
+
+      .highlight-text {
+        font-size: 13px;
+        line-height: 1.6;
+      }
+
+      .highlight-actions {
+        opacity: 1;
+      }
+
+      .highlight-location {
+        flex-wrap: wrap;
+      }
+
+      /* Split right: fullscreen overlay on mobile */
+      .split-right {
+        position: fixed;
+        top: 0;
+        right: 0;
+        width: 100%;
+        height: 100vh;
+        min-width: unset;
+        z-index: 25;
+      }
+
+      .btn-back {
+        display: flex;
+      }
+
+      /* Login */
+      .login-screen h1 { font-size: 26px; }
+      .login-screen p { font-size: 14px; padding: 0 20px; }
+      .btn-connect { padding: 12px 28px; font-size: 14px; }
+    }
   </style>
 </head>
 <body>
@@ -635,6 +1051,7 @@
     let bookSearchQuery = '';
     let activeColorFilter = 'all';
     let editingNote = null; // { highlightIndex }
+    let selectedHighlight = null; // index of highlight with note being viewed in split
 
     const EDIT_ICON = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" /></svg>`;
     const BOOK_ICON = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" /></svg>`;
@@ -693,7 +1110,14 @@
       } : {};
 
       app.innerHTML = `
-        <div class="sidebar">
+        <div class="mobile-header">
+          <button class="btn-menu" id="btn-menu">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" /></svg>
+          </button>
+          <h1>Kindle<span>Sync</span></h1>
+          <button class="btn-resync" id="btn-resync-mobile">Sync</button>
+        </div>
+        <div class="sidebar" id="sidebar">
           <div class="sidebar-header">
             <h1>Kindle<span>Sync</span></h1>
             <button class="btn-resync" id="btn-resync">Sincronizar</button>
@@ -717,12 +1141,15 @@
                 <div class="book-info">
                   <div class="book-title">${escapeHtml(b.title)}</div>
                   <div class="book-meta">${escapeHtml(b.author)}</div>
+                  ${b.progress ? `<div class="book-progress"><div class="book-progress-bar" style="width:${b.progress.percent}%"></div><span class="book-progress-text">${b.progress.percent}%</span></div>` : ''}
                 </div>
                 <div class="highlight-count">${b.highlights.length}</div>
               </div>
             `}).join('')}
           </div>
         </div>
+        <div class="sidebar-overlay" id="sidebar-overlay"></div>
+        <div class="content-area">
         <div class="main">
           ${book ? `
             <div class="book-detail-header">
@@ -742,6 +1169,13 @@
                     <div class="stat-badge">
                       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.076-4.076a1.526 1.526 0 0 1 1.037-.443 48.282 48.282 0 0 0 5.399-.588c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z" /></svg>
                       <span>${book.highlights.filter(h => h.note).length}</span> notas
+                    </div>
+                  ` : ''}
+                  ${book.progress ? `
+                    <div class="stat-badge">
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" /></svg>
+                      <span>${book.progress.percent}%</span> lido
+                      <span style="color:var(--text-muted);font-weight:400;">(Pág. ${book.progress.currentPage} de ${book.progress.totalPages})</span>
                     </div>
                   ` : ''}
                 </div>
@@ -765,24 +1199,12 @@
                     const realIdx = book.highlights.indexOf(h);
                     const isEditing = editingNote && editingNote.highlightIndex === realIdx;
                     return `
-                    <div class="highlight-card color-${h.color || 'yellow'}${h.type === 'note' && !h.note ? ' standalone-note' : ''}">
-                      ${h.type === 'note' && !h.note
-                        ? `<div class="highlight-note" style="margin-top:0;">${escapeHtml(h.text)}</div>`
-                        : `<div class="highlight-text">${escapeHtml(h.text)}</div>`
-                      }
-                      ${isEditing ? `
-                        <div class="note-editor">
-                          <textarea id="note-textarea">${escapeHtml(h.note)}</textarea>
-                          <div class="note-editor-actions">
-                            <button class="btn-cancel-note" data-cancel>Cancelar</button>
-                            <button class="btn-save-note" data-save="${realIdx}">Salvar no Kindle</button>
-                          </div>
-                        </div>
-                      ` : (h.note ? `<div class="highlight-note">${escapeHtml(h.note)}</div>` : '')
-                      }
+                    <div class="highlight-card color-${h.color || 'yellow'}${h.note ? ' has-note' : ''}${selectedHighlight === realIdx ? ' selected' : ''}" data-highlight="${realIdx}">
+                      <div class="highlight-text">${escapeHtml(h.text)}</div>
                       <div class="highlight-footer">
                         <div class="highlight-location">
-                          ${h.type ? `<span class="highlight-type-badge type-${h.type}">${h.type === 'highlight' ? 'Destaque' : h.type === 'note' ? 'Nota' : 'Marcador'}</span>` : ''}
+                          ${h.note ? `<span class="highlight-meta-tag note-indicator"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.076-4.076a1.526 1.526 0 0 1 1.037-.443 48.282 48.282 0 0 0 5.399-.588c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z" /></svg>Nota</span>` : ''}
+                          ${h.type === 'bookmark' ? `<span class="highlight-type-badge type-bookmark">Marcador</span>` : ''}
                           ${h.page ? `<span class="highlight-meta-tag"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>Pág. ${escapeHtml(h.page)}</span>` : ''}
                           ${h.locationNum ? `<span class="highlight-meta-tag"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z" /></svg>Pos. ${escapeHtml(h.locationNum)}</span>` : ''}
                           ${h.date ? `<span class="highlight-meta-tag"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 9v9.75" /></svg>${escapeHtml(h.date)}</span>` : ''}
@@ -810,7 +1232,87 @@
             </div>
           `}
         </div>
+        ${selectedHighlight !== null && book && book.highlights[selectedHighlight] ? (() => {
+          const sh = book.highlights[selectedHighlight];
+          const isEditingSplit = editingNote && editingNote.highlightIndex === selectedHighlight;
+          return `
+          <div class="split-right">
+            <div class="split-right-header">
+              <button class="btn-back" id="close-split-back">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" /></svg>
+                Voltar
+              </button>
+              <h3>${sh.note ? 'Nota vinculada' : 'Adicionar nota'}</h3>
+              <button class="split-right-close" id="close-split">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div class="split-right-content">
+              <div class="split-note-label">Destaque</div>
+              <div class="split-note-highlight color-${sh.color || 'yellow'}">
+                ${escapeHtml(sh.text)}
+              </div>
+              <div class="split-note-label" style="display:flex;align-items:center;justify-content:space-between;">
+                Nota
+                ${!isEditingSplit ? '<button class="highlight-action-btn" id="btn-edit-split" title="Editar nota" style="opacity:1;">' + EDIT_ICON + '</button>' : ''}
+              </div>
+              ${isEditingSplit ? `
+                <div class="note-editor" style="margin-top:0;">
+                  <textarea id="note-textarea-split" placeholder="Escreva sua nota aqui...">${escapeHtml(sh.note)}</textarea>
+                  <div class="note-editor-actions">
+                    <button class="btn-cancel-note" id="split-cancel">Cancelar</button>
+                    <button class="btn-save-note" id="split-save">Salvar no Kindle</button>
+                  </div>
+                </div>
+              ` : `
+                ${sh.note ? `<div class="split-note-text">${escapeHtml(sh.note)}</div>` : '<div class="split-note-text" style="color:var(--text-muted);font-style:italic;">Nenhuma nota. Clique no lapis para adicionar.</div>'}
+              `}
+              <div class="split-note-meta">
+                ${sh.page ? `<div class="meta-item"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" /></svg>Pag. ${escapeHtml(sh.page)}</div>` : ''}
+                ${sh.chapter ? `<div class="meta-item"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" /></svg>${escapeHtml(sh.chapter)}</div>` : ''}
+              </div>
+            </div>
+          </div>`;
+        })() : ''}
+        </div>
       `;
+
+      // Mobile menu
+      const menuBtn = document.getElementById('btn-menu');
+      const sidebar = document.getElementById('sidebar');
+      const overlay = document.getElementById('sidebar-overlay');
+
+      if (menuBtn) {
+        menuBtn.addEventListener('click', () => {
+          sidebar?.classList.add('open');
+          overlay?.classList.add('open');
+        });
+      }
+
+      if (overlay) {
+        overlay.addEventListener('click', () => {
+          sidebar?.classList.remove('open');
+          overlay?.classList.remove('open');
+        });
+      }
+
+      const closeSidebar = () => {
+        sidebar?.classList.remove('open');
+        overlay?.classList.remove('open');
+      };
+
+      // Resync mobile
+      const resyncMobile = document.getElementById('btn-resync-mobile');
+      if (resyncMobile) resyncMobile.addEventListener('click', handleLogin);
+
+      // Back button (mobile split)
+      const backBtn = document.getElementById('close-split-back');
+      if (backBtn) {
+        backBtn.addEventListener('click', () => {
+          selectedHighlight = null;
+          render();
+        });
+      }
 
       // Event listeners
       document.querySelectorAll('.book-item').forEach(el => {
@@ -818,6 +1320,8 @@
           selectedBook = parseInt(el.dataset.index);
           searchQuery = '';
           activeColorFilter = 'all';
+          selectedHighlight = null;
+          closeSidebar();
           render();
         });
       });
@@ -826,8 +1330,10 @@
       if (searchInput) {
         searchInput.addEventListener('input', (e) => {
           searchQuery = e.target.value;
+          const pos = e.target.selectionStart;
           render();
-          document.getElementById('search')?.focus();
+          const el = document.getElementById('search');
+          if (el) { el.focus(); el.setSelectionRange(pos, pos); }
         });
       }
 
@@ -835,8 +1341,10 @@
       if (bookSearchInput) {
         bookSearchInput.addEventListener('input', (e) => {
           bookSearchQuery = e.target.value;
+          const pos = e.target.selectionStart;
           render();
-          document.getElementById('book-search')?.focus();
+          const el = document.getElementById('book-search');
+          if (el) { el.focus(); el.setSelectionRange(pos, pos); }
         });
       }
 
@@ -847,46 +1355,16 @@
         });
       });
 
-      // Editar nota
+      // Editar nota — abre split panel em modo edicao
       document.querySelectorAll('.highlight-action-btn[data-edit]').forEach(el => {
-        el.addEventListener('click', () => {
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
           const realIdx = parseInt(el.dataset.edit);
+          selectedHighlight = realIdx;
           editingNote = { highlightIndex: realIdx };
           render();
-          document.getElementById('note-textarea')?.focus();
-        });
-      });
-
-      // Cancelar edicao
-      document.querySelectorAll('[data-cancel]').forEach(el => {
-        el.addEventListener('click', () => {
-          editingNote = null;
-          render();
-        });
-      });
-
-      // Salvar nota no Kindle
-      document.querySelectorAll('[data-save]').forEach(el => {
-        el.addEventListener('click', async () => {
-          const hi = parseInt(el.dataset.save);
-          const textarea = document.getElementById('note-textarea');
-          const newNote = textarea?.value || '';
-          el.disabled = true;
-          el.textContent = 'Salvando...';
-          try {
-            const res = await fetch(`/api/books/${selectedBook}/highlights/${hi}/note`, {
-              method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ note: newNote }),
-            });
-            const data = await res.json();
-            books[selectedBook].highlights[hi].note = data.note;
-            editingNote = null;
-            render();
-          } catch (err) {
-            el.textContent = 'Erro!';
-            setTimeout(() => { el.textContent = 'Salvar no Kindle'; el.disabled = false; }, 2000);
-          }
+          const ta = document.getElementById('note-textarea-split');
+          if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
         });
       });
 
@@ -901,6 +1379,72 @@
           }
         });
       });
+
+      // Clique em highlight com nota — abre split view
+      document.querySelectorAll('.highlight-card.has-note').forEach(el => {
+        el.addEventListener('click', (e) => {
+          if (e.target.closest('.highlight-actions') || e.target.closest('.highlight-action-btn')) return;
+          const idx = parseInt(el.dataset.highlight);
+          selectedHighlight = selectedHighlight === idx ? null : idx;
+          editingNote = null;
+          render();
+        });
+      });
+
+      // Fechar split view
+      const closeSplit = document.getElementById('close-split');
+      if (closeSplit) {
+        closeSplit.addEventListener('click', () => {
+          selectedHighlight = null;
+          editingNote = null;
+          render();
+        });
+      }
+
+      // Editar nota no split panel
+      const editSplitBtn = document.getElementById('btn-edit-split');
+      if (editSplitBtn) {
+        editSplitBtn.addEventListener('click', () => {
+          editingNote = { highlightIndex: selectedHighlight };
+          render();
+          const ta = document.getElementById('note-textarea-split');
+          if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+        });
+      }
+
+      // Cancelar edicao no split
+      const splitCancel = document.getElementById('split-cancel');
+      if (splitCancel) {
+        splitCancel.addEventListener('click', () => {
+          editingNote = null;
+          render();
+        });
+      }
+
+      // Salvar nota no split
+      const splitSave = document.getElementById('split-save');
+      if (splitSave) {
+        splitSave.addEventListener('click', async () => {
+          const textarea = document.getElementById('note-textarea-split');
+          const newNote = textarea?.value || '';
+          splitSave.disabled = true;
+          splitSave.textContent = 'Salvando...';
+          try {
+            const res = await fetch(`/api/books/${selectedBook}/highlights/${selectedHighlight}/note`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ note: newNote }),
+            });
+            const data = await res.json();
+            books[selectedBook].highlights[selectedHighlight].note = data.note;
+            editingNote = null;
+            render();
+          } catch (err) {
+            splitSave.textContent = 'Erro!';
+            setTimeout(() => { splitSave.textContent = 'Salvar no Kindle'; splitSave.disabled = false; }, 2000);
+          }
+        });
+      }
 
       const resyncBtn = document.getElementById('btn-resync');
       if (resyncBtn) {
