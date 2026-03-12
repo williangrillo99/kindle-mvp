@@ -564,6 +564,31 @@
 
     .btn-cancel-note:hover { background: var(--bg-hover); }
 
+    .btn-add-note {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 10px;
+      margin-top: 6px;
+      background: transparent;
+      border: 1px dashed var(--border-light);
+      border-radius: 6px;
+      color: var(--text-muted);
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .btn-add-note:hover {
+      color: var(--accent);
+      border-color: var(--accent);
+    }
+
+    .btn-add-note svg {
+      width: 12px;
+      height: 12px;
+    }
+
     .btn-save-note:disabled {
       opacity: 0.5;
       cursor: not-allowed;
@@ -1204,6 +1229,7 @@
                     return `
                     <div class="highlight-card color-${h.color || 'yellow'}${h.note ? ' has-note' : ''}${selectedHighlight === realIdx ? ' selected' : ''}" data-highlight="${realIdx}">
                       <div class="highlight-text">${escapeHtml(h.text)}</div>
+                      ${!h.note ? `<button class="btn-add-note" data-add-note="${realIdx}"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>Adicionar nota</button>` : ''}
                       <div class="highlight-footer">
                         <div class="highlight-location">
                           ${h.note ? `<span class="highlight-meta-tag note-indicator"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.076-4.076a1.526 1.526 0 0 1 1.037-.443 48.282 48.282 0 0 0 5.399-.588c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z" /></svg>Nota</span>` : ''}
@@ -1368,6 +1394,19 @@
           render();
           const ta = document.getElementById('note-textarea-split');
           if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+        });
+      });
+
+      // Botao "Adicionar nota" — abre split em modo edicao
+      document.querySelectorAll('.btn-add-note[data-add-note]').forEach(el => {
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const realIdx = parseInt(el.dataset.addNote);
+          selectedHighlight = realIdx;
+          editingNote = { highlightIndex: realIdx };
+          render();
+          const ta = document.getElementById('note-textarea-split');
+          if (ta) { ta.focus(); }
         });
       });
 
