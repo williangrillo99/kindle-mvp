@@ -116,6 +116,25 @@ async function saveSession() {
 async function scrapeAll() {
   if (!page) throw new Error('Browser não iniciado');
 
+  // Intercepta chamadas de rede para descobrir APIs de annotations
+  page.on('request', req => {
+    const url = req.url();
+    if (url.includes('annotation') || url.includes('notebook') || url.includes('note') || url.includes('highlight') || url.includes('sidecar')) {
+      console.log(`[NET] ${req.method()} ${url}`);
+      const headers = req.headers();
+      if (headers['content-type']) console.log(`[NET]   Content-Type: ${headers['content-type']}`);
+      const post = req.postData();
+      if (post) console.log(`[NET]   Body: ${post.substring(0, 300)}`);
+    }
+  });
+
+  page.on('response', res => {
+    const url = res.url();
+    if (url.includes('annotation') || url.includes('notebook') || url.includes('note') || url.includes('highlight') || url.includes('sidecar')) {
+      console.log(`[NET] Response ${res.status()} ${url}`);
+    }
+  });
+
   // 1) Navega para a biblioteca do Cloud Reader
   console.log('Navegando para Cloud Reader Library...');
   await page.goto(`${CLOUD_READER_URL}/kindle-library`, {
