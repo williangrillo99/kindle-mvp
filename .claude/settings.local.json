@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(python3:*)",
-      "Bash(/usr/bin/python3:*)"
+      "Bash(/usr/bin/python3:*)",
+      "Bash(npm run dev)"
     ]
   }
 }
