@@ -355,63 +355,42 @@ async function editNote(asin, highlightIndex, newNote) {
     throw new Error('Cookies da Amazon não encontrados na sessão.');
   }
 
-  // Busca annotations do livro via API do Kindle Cloud Reader
-  const annotationsUrl = `${CLOUD_READER_URL}/api/annotations?asin=${asin}`;
-  console.log(`[editNote] Buscando annotations: ${annotationsUrl}`);
+  // Busca o annotationId correspondente ao highlightIndex
+  // Precisamos do annotationId que está no data-testid dos wrappers (capturado durante o scraping)
+  // Por enquanto, usa a API updateAnnotations do Cloud Reader
 
-  const fetchRes = await fetch(annotationsUrl, {
-    headers: {
-      'Cookie': cookieStr,
-      'Accept': 'application/json',
-      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-    },
-  });
+  const updateUrl = `${CLOUD_READER_URL}/service/mobile/reader/updateAnnotations`;
+  console.log(`[editNote] Chamando: ${updateUrl}`);
 
-  if (!fetchRes.ok) {
-    console.log(`[editNote] API annotations retornou ${fetchRes.status}`);
-    // Fallback: salva apenas localmente
-    throw new Error(`API da Amazon retornou ${fetchRes.status}. Nota salva apenas localmente.`);
-  }
-
-  const annotationsData = await fetchRes.json();
-  console.log(`[editNote] Annotations recebidas:`, JSON.stringify(annotationsData).substring(0, 500));
-
-  // Encontra o highlight pelo índice
-  const annotations = annotationsData.annotations || annotationsData.items || [];
-  const highlights = annotations.filter(a =>
-    a.type === 'highlight' || a.type === 'HIGHLIGHT' || !a.type
-  );
-
-  if (highlightIndex >= highlights.length) {
-    throw new Error(`Highlight índice ${highlightIndex} não encontrado (total: ${highlights.length})`);
-  }
-
-  const target = highlights[highlightIndex];
-  const annotationId = target.annotationId || target.id;
-
-  if (!annotationId) {
-    throw new Error('ID da annotation não encontrado');
-  }
-
-  // Atualiza a nota via PUT/PATCH
-  const updateUrl = `${CLOUD_READER_URL}/api/annotations/${annotationId}`;
-  console.log(`[editNote] Atualizando nota: ${updateUrl}`);
+  // Formato da API do Kindle Cloud Reader para adicionar/editar nota
+  const body = {
+    asin: asin,
+    customerId: '',  // Será extraído dos cookies
+    annotations: [{
+      type: 'note',
+      text: newNote || '',
+      highlightIndex: highlightIndex,
+    }],
+  };
 
   const updateRes = await fetch(updateUrl, {
-    method: 'PUT',
+    method: 'POST',
     headers: {
       'Cookie': cookieStr,
       'Content-Type': 'application/json',
       'Accept': 'application/json',
       'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+      'Origin': CLOUD_READER_URL,
+      'Referer': `${CLOUD_READER_URL}/?asin=${asin}`,
     },
-    body: JSON.stringify({ ...target, note: newNote || '' }),
+    body: JSON.stringify(body),
   });
 
+  const responseText = await updateRes.text();
+  console.log(`[editNote] Response ${updateRes.status}: ${responseText.substring(0, 500)}`);
+
   if (!updateRes.ok) {
-    const errText = await updateRes.text();
-    console.log(`[editNote] Erro ao salvar: ${updateRes.status} - ${errText}`);
-    throw new Error(`Erro ao salvar nota na Amazon: ${updateRes.status}`);
+    throw new Error(`API Amazon retornou ${updateRes.status}: ${responseText.substring(0, 200)}`);
   }
 
   console.log('[editNote] Nota salva com sucesso via HTTP');
