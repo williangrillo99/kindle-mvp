@@ -38,7 +38,7 @@ app.get('/api/login/status', async (req, res) => {
 app.post('/api/sync', async (req, res) => {
   try {
     booksData = await scrapeAll();
-    await closeBrowser();
+    // Mantém browser aberto para permitir edição de notas
     res.json({ status: 'ok', books: booksData });
   } catch (err) {
     res.status(500).json({ error: err.message });
