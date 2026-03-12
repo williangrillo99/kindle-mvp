@@ -118,6 +118,7 @@ async function scrapeAll() {
 
   // Captura dados brutos de annotations e x-adp-session-token
   const annotationsCache = {};
+  const revisionCache = {};
   let adpSessionToken = '';
   page.on('request', req => {
     const url = req.url();
@@ -131,9 +132,13 @@ async function scrapeAll() {
       try {
         const body = await res.json();
         const asinMatch = url.match(/asin=([^&]+)/);
+        const revisionMatch = url.match(/revision=([^&]+)/);
         if (asinMatch && body.annotations) {
           annotationsCache[asinMatch[1]] = body.annotations;
-          console.log(`[NET] Cached ${body.annotations.length} annotations for ${asinMatch[1]}`);
+          if (revisionMatch) {
+            revisionCache[asinMatch[1]] = revisionMatch[1];
+          }
+          console.log(`[NET] Cached ${body.annotations.length} annotations for ${asinMatch[1]} (revision=${revisionMatch ? revisionMatch[1] : 'N/A'})`);
         }
       } catch {}
     }
@@ -325,6 +330,7 @@ async function scrapeAll() {
       const apiAnnotations = annotationsCache[asin] || [];
       const apiHighlights = apiAnnotations.filter(a => a.type === 'kindle.highlight');
 
+      bookList[i]._revision = revisionCache[asin] || '';
       bookList[i].highlights = highlights.map((h, idx) => {
         const apiData = apiHighlights[idx] || {};
         return {
@@ -343,6 +349,7 @@ async function scrapeAll() {
           _end: apiData.end || null,
           _guid: apiData.guid || null,
           _dsn: apiData.dsn || null,
+          _positionType: apiData.positionType || 'YJBinary',
         };
       });
 
@@ -366,10 +373,10 @@ async function scrapeAll() {
 }
 
 // Edita nota via HTTP usando cookies da sessão (sem browser)
-async function editNote(asin, highlightIndex, newNote, highlightData) {
+async function editNote(asin, highlightIndex, newNote, highlightData, bookData) {
   console.log(`[editNote] Editando nota via HTTP - ASIN=${asin}, index=${highlightIndex}`);
 
-  if (!highlightData || !highlightData._end || !highlightData._guid || !highlightData._dsn) {
+  if (!highlightData || !highlightData._end || !highlightData._guid) {
     throw new Error('Dados da annotation não encontrados. Faça sync novamente.');
   }
 
@@ -400,6 +407,8 @@ async function editNote(asin, highlightIndex, newNote, highlightData) {
     throw new Error('ADP session token não encontrado. Faça sync novamente.');
   }
 
+  const revision = (bookData && bookData._revision) || '';
+
   const headers = {
     'Cookie': cookieStr,
     'Content-Type': 'application/json',
@@ -415,32 +424,36 @@ async function editNote(asin, highlightIndex, newNote, highlightData) {
   const csrfToken = await csrfRes.text();
   console.log(`[editNote] CSRF token: ${csrfToken.substring(0, 30)}...`);
 
-  // 2) Cria/atualiza nota na posição end do highlight
+  // 2) Monta body no formato Amazon Coral
   const noteAnnotation = {
-    action: 'create',
     asin: asin,
-    context: null,
-    deviceType: null,
-    dsn: highlightData._dsn,
-    end: highlightData._end,
-    guid: highlightData._guid,
-    highlightColor: null,
-    isSample: null,
-    modifiedTimestamp: Date.now(),
-    note: newNote + '\n',
     position: highlightData._end,
-    positionType: 'Mobi7',
     start: highlightData._end,
+    end: highlightData._end,
+    context: null,
+    highlightColor: null,
     type: 'kindle.note',
+    modifiedTimestamp: Date.now(),
+    note: newNote,
+    action: 'update',
+    positionType: highlightData._positionType || 'YJBinary',
+    guid: highlightData._guid,
   };
 
+  const body = {
+    Operation: 'updateAnnotations',
+    Input: {
+      asin: asin,
+      revision: revision,
+      annotations: [noteAnnotation],
+      localTimeOffset: -180,
+      clientVersion: '20000100',
+    },
+  };
 
-  const updateUrl = `${CLOUD_READER_URL}/service/mobile/reader/updateAnnotations?clientVersion=20000100`;
+  const updateUrl = `${CLOUD_READER_URL}/service/mobile/reader/updateAnnotations`;
   console.log(`[editNote] POST ${updateUrl}`);
-
-  // Envia apenas o array de annotations (formato Coral)
-  const annotationsBody = JSON.stringify([noteAnnotation]);
-  console.log(`[editNote] Body: ${annotationsBody.substring(0, 500)}`);
+  console.log(`[editNote] Body: ${JSON.stringify(body).substring(0, 500)}`);
 
   const updateRes = await fetch(updateUrl, {
     method: 'POST',
@@ -448,7 +461,7 @@ async function editNote(asin, highlightIndex, newNote, highlightData) {
       ...headers,
       'x-csrf-token': csrfToken,
     },
-    body: annotationsBody,
+    body: JSON.stringify(body),
   });
 
   const responseText = await updateRes.text();
