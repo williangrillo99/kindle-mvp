@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 const { openLogin, waitForLogin, scrapeAll, closeBrowser, editNote, isBrowserOpen, getSyncProgress } = require('./scraper');
 
 const app = express();
@@ -9,6 +10,9 @@ let booksData = [];
 
 app.use(cors());
 app.use(express.json());
+
+// Serve frontend estático
+app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // Abre Chrome real com login da Amazon
 app.post('/api/login', async (req, res) => {
