@@ -1,13 +1,13 @@
 const express = require('express');
-const path = require('path');
-const { openLogin, waitForLogin, scrapeAll, closeBrowser, editNote, isBrowserOpen, getSyncProgress } = require('../scraper');
+const cors = require('cors');
+const { openLogin, waitForLogin, scrapeAll, closeBrowser, editNote, isBrowserOpen, getSyncProgress } = require('./scraper');
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3001;
 
 let booksData = [];
 
-app.use(express.static(path.join(__dirname, '..', 'public')));
+app.use(cors());
 app.use(express.json());
 
 // Abre Chrome real com login da Amazon
@@ -67,7 +67,6 @@ app.put('/api/books/:bookIndex/highlights/:highlightIndex/note', async (req, res
     booksData[bi].highlights[hi].note = note || '';
     res.json({ status: 'ok', note: booksData[bi].highlights[hi].note });
   } catch (err) {
-    // Salva localmente mesmo se falhar no Kindle
     booksData[bi].highlights[hi].note = note || '';
     res.json({ status: 'ok', note: booksData[bi].highlights[hi].note, warning: 'Salvo localmente. Erro no Kindle: ' + err.message });
   }
@@ -79,5 +78,5 @@ app.post('/api/close', async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`KindleSync rodando em http://localhost:${PORT}`);
+  console.log(`KindleSync Backend rodando em http://localhost:${PORT}`);
 });

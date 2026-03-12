@@ -24,8 +24,11 @@ async function openLogin() {
 
   browser = await chromium.launch({
     headless: false,
-    channel: 'chromium',
-    args: ['--disable-blink-features=AutomationControlled'],
+    args: [
+      '--disable-blink-features=AutomationControlled',
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+    ],
   });
 
   const contextOptions = {

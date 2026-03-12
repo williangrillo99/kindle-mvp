@@ -1,13 +1,12 @@
 {
-  "name": "kindle-mvp",
+  "name": "kindle-mvp-backend",
   "version": "1.0.0",
   "type": "commonjs",
   "scripts": {
-    "backend": "cd backend && node server.js",
-    "dev": "cd backend && node server.js"
+    "start": "node server.js"
   },
   "dependencies": {
-    "cors": "^2.8.6",
+    "cors": "^2.8.5",
     "express": "^5.2.1",
     "playwright": "^1.58.2"
   }

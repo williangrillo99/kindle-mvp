@@ -1044,6 +1044,9 @@
   <div id="app"></div>
 
   <script>
+    // URL do backend na DigitalOcean
+    const API_URL = 'http://68.183.110.111:3001';
+
     const app = document.getElementById('app');
     let books = [];
     let selectedBook = null;
@@ -1430,7 +1433,7 @@
           splitSave.disabled = true;
           splitSave.textContent = 'Salvando...';
           try {
-            const res = await fetch(`/api/books/${selectedBook}/highlights/${selectedHighlight}/note`, {
+            const res = await fetch(`${API_URL}/api/books/${selectedBook}/highlights/${selectedHighlight}/note`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ note: newNote }),
@@ -1462,12 +1465,12 @@
       if (status) status.innerHTML = '<span class="spinner"></span> Abrindo login da Amazon...';
 
       try {
-        await fetch('/api/login', { method: 'POST' });
+        await fetch(`${API_URL}/api/login`, { method: 'POST' });
         if (status) status.innerHTML = '<span class="spinner"></span> Aguardando login no Chrome...';
 
         let loggedIn = false;
         while (!loggedIn) {
-          const res = await fetch('/api/login/status');
+          const res = await fetch(`${API_URL}/api/login/status`);
           const data = await res.json();
           if (data.status === 'logged_in') {
             loggedIn = true;
@@ -1483,12 +1486,12 @@
         if (status) status.innerHTML = '<span class="spinner"></span> Sincronizando livros e destaques...';
 
         // Inicia sync em background e polled progresso
-        const syncPromise = fetch('/api/sync', { method: 'POST' }).then(r => r.json());
+        const syncPromise = fetch(`${API_URL}/api/sync`, { method: 'POST' }).then(r => r.json());
 
         // Poll progresso enquanto sync roda
         const progressInterval = setInterval(async () => {
           try {
-            const pRes = await fetch('/api/sync/progress');
+            const pRes = await fetch(`${API_URL}/api/sync/progress`);
             const progress = await pRes.json();
             if (progress.total > 0 && status) {
               status.innerHTML = `<span class="spinner"></span> Extraindo livro ${progress.current}/${progress.total}: ${progress.bookTitle}`;
