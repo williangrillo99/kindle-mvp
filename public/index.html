@@ -411,6 +411,28 @@
       color: var(--text-primary);
     }
 
+    .highlight-text.truncated {
+      display: -webkit-box;
+      -webkit-line-clamp: 4;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .btn-toggle-text {
+      background: none;
+      border: none;
+      color: var(--accent);
+      font-size: 12px;
+      cursor: pointer;
+      padding: 2px 0;
+      margin-top: 4px;
+    }
+
+    .btn-toggle-text:hover {
+      color: var(--accent-hover);
+      text-decoration: underline;
+    }
+
     .highlight-note {
       margin-top: 10px;
       padding: 10px 14px;
@@ -1080,6 +1102,7 @@
     let activeColorFilter = 'all';
     let editingNote = null; // { highlightIndex }
     let selectedHighlight = null; // index of highlight with note being viewed in split
+    let expandedHighlights = new Set(); // indices of expanded highlights
 
     const EDIT_ICON = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" /></svg>`;
     const BOOK_ICON = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" /></svg>`;
@@ -1228,7 +1251,8 @@
                     const isEditing = editingNote && editingNote.highlightIndex === realIdx;
                     return `
                     <div class="highlight-card color-${h.color || 'yellow'}${h.note ? ' has-note' : ''}${selectedHighlight === realIdx ? ' selected' : ''}" data-highlight="${realIdx}">
-                      <div class="highlight-text">${escapeHtml(h.text)}</div>
+                      <div class="highlight-text${h.text.length > 300 && !expandedHighlights.has(realIdx) ? ' truncated' : ''}" data-full-idx="${realIdx}">${escapeHtml(h.text)}</div>
+                      ${h.text.length > 300 ? `<button class="btn-toggle-text" data-toggle="${realIdx}">${expandedHighlights.has(realIdx) ? 'Ver menos' : 'Ver mais'}</button>` : ''}
                       ${!h.note ? `<button class="btn-add-note" data-add-note="${realIdx}"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>Adicionar nota</button>` : ''}
                       <div class="highlight-footer">
                         <div class="highlight-location">
@@ -1394,6 +1418,20 @@
           render();
           const ta = document.getElementById('note-textarea-split');
           if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+        });
+      });
+
+      // Toggle "Ver mais" / "Ver menos"
+      document.querySelectorAll('.btn-toggle-text[data-toggle]').forEach(el => {
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const idx = parseInt(el.dataset.toggle);
+          if (expandedHighlights.has(idx)) {
+            expandedHighlights.delete(idx);
+          } else {
+            expandedHighlights.add(idx);
+          }
+          render();
         });
       });
 
