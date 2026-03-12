@@ -1,7 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const { openLogin, waitForLogin, scrapeAll, closeBrowser, editNote, isBrowserOpen, getSyncProgress } = require('./scraper');
+const { openLogin, waitForLogin, scrapeAll, closeBrowser, editNote, getSyncProgress } = require('./scraper');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -38,7 +38,7 @@ app.get('/api/login/status', async (req, res) => {
 app.post('/api/sync', async (req, res) => {
   try {
     booksData = await scrapeAll();
-    // Mantém browser aberto para permitir edição de notas
+    await closeBrowser();
     res.json({ status: 'ok', books: booksData });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -65,14 +65,13 @@ app.put('/api/books/:bookIndex/highlights/:highlightIndex/note', async (req, res
   }
 
   try {
-    if (await isBrowserOpen()) {
-      await editNote(booksData[bi].asin, hi, note || '');
-    }
+    await editNote(booksData[bi].asin, hi, note || '');
     booksData[bi].highlights[hi].note = note || '';
     res.json({ status: 'ok', note: booksData[bi].highlights[hi].note });
   } catch (err) {
+    // Salva localmente mesmo se falhar na Amazon
     booksData[bi].highlights[hi].note = note || '';
-    res.json({ status: 'ok', note: booksData[bi].highlights[hi].note, warning: 'Salvo localmente. Erro no Kindle: ' + err.message });
+    res.json({ status: 'ok', note: booksData[bi].highlights[hi].note, warning: 'Salvo localmente. ' + err.message });
   }
 });
 

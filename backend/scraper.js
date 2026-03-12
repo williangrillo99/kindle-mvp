@@ -322,115 +322,88 @@ async function scrapeAll() {
   return bookList;
 }
 
+// Edita nota via HTTP usando cookies da sessão (sem browser)
 async function editNote(asin, highlightIndex, newNote) {
-  if (!page) throw new Error('Browser não iniciado');
+  console.log(`[editNote] Editando nota via HTTP - ASIN=${asin}, index=${highlightIndex}`);
 
-  // 1) Abre o livro no Cloud Reader
-  console.log(`[editNote] Abrindo livro ASIN=${asin}...`);
-  await page.goto(`${CLOUD_READER_URL}/?asin=${asin}`, {
-    waitUntil: 'domcontentloaded',
-    timeout: 30000,
+  // Carrega cookies da sessão
+  if (!fs.existsSync(SESSION_FILE)) {
+    throw new Error('Sessão não encontrada. Faça login primeiro.');
+  }
+
+  const session = JSON.parse(fs.readFileSync(SESSION_FILE, 'utf-8'));
+  const cookies = session.cookies || [];
+
+  // Monta cookie string para os domínios da Amazon
+  const cookieStr = cookies
+    .filter(c => c.domain.includes('amazon'))
+    .map(c => `${c.name}=${c.value}`)
+    .join('; ');
+
+  if (!cookieStr) {
+    throw new Error('Cookies da Amazon não encontrados na sessão.');
+  }
+
+  // Busca annotations do livro via API do Kindle Cloud Reader
+  const annotationsUrl = `${CLOUD_READER_URL}/api/annotations?asin=${asin}`;
+  console.log(`[editNote] Buscando annotations: ${annotationsUrl}`);
+
+  const fetchRes = await fetch(annotationsUrl, {
+    headers: {
+      'Cookie': cookieStr,
+      'Accept': 'application/json',
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+    },
   });
-  await page.waitForTimeout(8000);
 
-  // Fecha alert "Most Recent Page Read" se aparecer
-  try {
-    const alertBtn = await page.$('ion-alert button');
-    if (alertBtn) await alertBtn.click();
-    await page.waitForTimeout(500);
-  } catch {}
+  if (!fetchRes.ok) {
+    console.log(`[editNote] API annotations retornou ${fetchRes.status}`);
+    // Fallback: salva apenas localmente
+    throw new Error(`API da Amazon retornou ${fetchRes.status}. Nota salva apenas localmente.`);
+  }
 
-  // 2) Clica no centro para mostrar a toolbar
-  await page.mouse.click(400, 300);
-  await page.waitForTimeout(1000);
+  const annotationsData = await fetchRes.json();
+  console.log(`[editNote] Annotations recebidas:`, JSON.stringify(annotationsData).substring(0, 500));
 
-  // 3) Abre o painel de Annotations (Notebook)
-  await page.evaluate(() => {
-    const btn = document.querySelector('[data-testid="top_menu_notebook"]');
-    if (btn) btn.click();
+  // Encontra o highlight pelo índice
+  const annotations = annotationsData.annotations || annotationsData.items || [];
+  const highlights = annotations.filter(a =>
+    a.type === 'highlight' || a.type === 'HIGHLIGHT' || !a.type
+  );
+
+  if (highlightIndex >= highlights.length) {
+    throw new Error(`Highlight índice ${highlightIndex} não encontrado (total: ${highlights.length})`);
+  }
+
+  const target = highlights[highlightIndex];
+  const annotationId = target.annotationId || target.id;
+
+  if (!annotationId) {
+    throw new Error('ID da annotation não encontrado');
+  }
+
+  // Atualiza a nota via PUT/PATCH
+  const updateUrl = `${CLOUD_READER_URL}/api/annotations/${annotationId}`;
+  console.log(`[editNote] Atualizando nota: ${updateUrl}`);
+
+  const updateRes = await fetch(updateUrl, {
+    method: 'PUT',
+    headers: {
+      'Cookie': cookieStr,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+    },
+    body: JSON.stringify({ ...target, note: newNote || '' }),
   });
-  await page.waitForTimeout(3000);
 
-  // 4) Encontra o highlight pelo índice (somente highlights, ignorando notas standalone)
-  const wrappers = await page.$$('.notebook-chapter .notebook-editable-item-wrapper');
-  let validIndex = 0;
-  let targetWrapper = null;
-
-  for (const wrapper of wrappers) {
-    const headerText = await wrapper.$eval(
-      'p.grouped-annotation_title',
-      el => el.textContent.trim()
-    ).catch(() => '');
-
-    // Ignora notas standalone (mesmo filtro do scrapeAll)
-    if (/^Note/i.test(headerText) || /^Nota/i.test(headerText)) continue;
-
-    // Verifica se tem texto de highlight
-    const hasText = await wrapper.$('p.notebook-editable-item-black').catch(() => null);
-    if (!hasText) continue;
-
-    if (validIndex === highlightIndex) {
-      targetWrapper = wrapper;
-      break;
-    }
-    validIndex++;
+  if (!updateRes.ok) {
+    const errText = await updateRes.text();
+    console.log(`[editNote] Erro ao salvar: ${updateRes.status} - ${errText}`);
+    throw new Error(`Erro ao salvar nota na Amazon: ${updateRes.status}`);
   }
 
-  if (!targetWrapper) throw new Error(`Highlight índice ${highlightIndex} não encontrado no painel de annotations`);
-
-  // 5) Clica no wrapper para selecionar/abrir edição de nota
-  console.log(`[editNote] Encontrou highlight no índice ${highlightIndex}, editando nota...`);
-
-  // Tenta encontrar botão de editar nota ou área clicável para nota
-  const editBtn = await targetWrapper.$('button[class*="note"], [data-testid*="note"], [class*="edit-note"], [class*="add-note"]');
-  if (editBtn) {
-    await editBtn.click();
-    await page.waitForTimeout(1000);
-  } else {
-    // Clica no wrapper para abrir opções
-    await targetWrapper.click();
-    await page.waitForTimeout(1000);
-  }
-
-  // 6) Procura textarea/input de nota dentro do wrapper ou na página
-  let textarea = await targetWrapper.$('textarea, input[type="text"], [contenteditable="true"]');
-  if (!textarea) {
-    // Procura globalmente (pode ser um modal/overlay)
-    textarea = await page.$('.notebook-note-editor textarea, .notebook-note-input textarea, [class*="note-editor"] textarea, [class*="note-input"] textarea, textarea[class*="note"]');
-  }
-  if (!textarea) {
-    // Tenta encontrar qualquer textarea visível na página
-    textarea = await page.$('textarea');
-  }
-
-  if (!textarea) {
-    // Debug: lista elementos interativos do wrapper
-    const debugInfo = await targetWrapper.evaluate(el => el.innerHTML.substring(0, 500));
-    console.log(`[editNote] Debug wrapper HTML: ${debugInfo}`);
-    throw new Error('Campo de edição da nota não encontrado no Cloud Reader');
-  }
-
-  // 7) Limpa e digita a nova nota
-  await textarea.click({ clickCount: 3 });
-  await page.waitForTimeout(200);
-  await textarea.fill(newNote || '');
-  await page.waitForTimeout(500);
-
-  // 8) Salva — procura botão de salvar
-  const saveBtn = await page.$('button:has-text("Save"), button:has-text("Salvar"), button:has-text("Done"), button:has-text("Concluído"), [class*="save-note"], [data-testid*="save"]');
-
-  if (saveBtn) {
-    await saveBtn.click();
-    await page.waitForTimeout(1000);
-    console.log('[editNote] Nota salva via botão');
-  } else {
-    // Fallback: pressiona Enter ou Tab para confirmar
-    await textarea.press('Tab');
-    await page.waitForTimeout(500);
-    console.log('[editNote] Nota salva via Tab (fallback)');
-  }
-
-  await saveSession();
+  console.log('[editNote] Nota salva com sucesso via HTTP');
   return { status: 'ok', note: newNote };
 }
 
