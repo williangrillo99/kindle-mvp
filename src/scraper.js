@@ -24,7 +24,7 @@ async function openLogin() {
 
   browser = await chromium.launch({
     headless: false,
-    channel: 'chrome',
+    channel: 'chromium',
     args: ['--disable-blink-features=AutomationControlled'],
   });
 
