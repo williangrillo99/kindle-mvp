@@ -436,7 +436,7 @@ async function editNote(asin, highlightIndex, newNote, highlightData, bookData) 
     modifiedTimestamp: Date.now(),
     note: newNote,
     action: 'update',
-    positionType: highlightData._positionType || 'YJBinary',
+    positionType: 'YJBinary',
     guid: highlightData._guid,
   };
 
@@ -469,6 +469,16 @@ async function editNote(asin, highlightIndex, newNote, highlightData, bookData) 
 
   if (!updateRes.ok) {
     throw new Error(`API Amazon retornou ${updateRes.status}: ${responseText.substring(0, 200)}`);
+  }
+
+  // Amazon retorna 200 mesmo com erro — checa o body
+  try {
+    const resJson = JSON.parse(responseText);
+    if (resJson.Output && resJson.Output.__type && resJson.Output.__type.includes('Exception')) {
+      throw new Error(`Amazon erro: ${resJson.Output.message || resJson.Output.__type}`);
+    }
+  } catch (e) {
+    if (e.message.startsWith('Amazon erro:')) throw e;
   }
 
   console.log('[editNote] Nota salva com sucesso no Kindle');
