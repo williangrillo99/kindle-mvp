@@ -3,7 +3,16 @@
     "allow": [
       "Bash(python3:*)",
       "Bash(/usr/bin/python3:*)",
-      "Bash(npm run dev)"
+      "Bash(npm run dev)",
+      "Bash(npm install cors)",
+      "Bash(git add backend/scraper.js)",
+      "Bash(git commit:*)",
+      "Bash(git push)",
+      "Bash(npm install better-sqlite3 bcryptjs jsonwebtoken uuid)",
+      "Bash(node -e \"require\\(''./backend/db''\\); require\\(''./backend/auth''\\); console.log\\(''OK''\\)\")",
+      "Bash(timeout 3 node backend/server.js)",
+      "Bash(node -e \":*)",
+      "Bash(git add .gitignore backend/db.js backend/auth.js backend/server.js backend/scraper.js backend/package.json backend/package-lock.json public/index.html)"
     ]
   }
 }
