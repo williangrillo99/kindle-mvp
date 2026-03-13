@@ -333,11 +333,6 @@ async function scrapeAll() {
 
       bookList[i]._revision = revisionCache[asin] || '';
 
-      // DEBUG: mostra estrutura do primeiro highlight da API
-      if (apiHighlights.length > 0) {
-        console.log('[DEBUG] Primeiro highlight API:', JSON.stringify(apiHighlights[0], null, 2));
-      }
-
       // Se temos dados da API, usa o texto da API (que vem completo) em vez do DOM (que pode truncar)
       if (apiHighlights.length > 0) {
         console.log(`  Usando ${apiHighlights.length} highlights da API (texto completo)`);
@@ -347,10 +342,10 @@ async function scrapeAll() {
           // Tenta encontrar dados do DOM para cor, capítulo, página
           const domMatch = highlights.find(h => {
             // Match por texto parcial (DOM pode ter truncado)
-            return apiData.highlight && h.text && apiData.highlight.substring(0, 80) === h.text.substring(0, 80);
+            return apiData.context && h.text && apiData.context.substring(0, 80) === h.text.substring(0, 80);
           });
           return {
-            text: apiData.highlight || (domMatch ? domMatch.text : ''),
+            text: apiData.context || (domMatch ? domMatch.text : ''),
             note: linkedNote ? linkedNote.note : (domMatch ? domMatch.note : ''),
             location: domMatch ? domMatch.location : '',
             color: domMatch ? domMatch.color : 'yellow',
