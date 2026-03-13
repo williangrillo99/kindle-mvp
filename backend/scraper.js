@@ -326,32 +326,64 @@ async function scrapeAll() {
         return results;
       });
 
-      // Enriquece highlights com dados da API (position, guid, dsn)
+      // Enriquece highlights com dados da API (position, guid, dsn, texto completo)
       const apiAnnotations = annotationsCache[asin] || [];
       const apiHighlights = apiAnnotations.filter(a => a.type === 'kindle.highlight');
+      const apiNotes = apiAnnotations.filter(a => a.type === 'kindle.note');
 
       bookList[i]._revision = revisionCache[asin] || '';
-      bookList[i].highlights = highlights.map((h, idx) => {
-        const apiData = apiHighlights[idx] || {};
-        return {
-          text: h.text,
-          note: h.note,
-          location: h.location,
-          color: h.color,
-          type: h.type,
-          page: h.page,
-          locationNum: '',
-          date: '',
-          chapter: h.chapter,
-          // Dados da API para edição de notas
-          _position: apiData.position || null,
-          _start: apiData.start || null,
-          _end: apiData.end || null,
-          _guid: apiData.guid || null,
-          _dsn: apiData.dsn || null,
-          _positionType: apiData.positionType || 'YJBinary',
-        };
-      });
+
+      // Se temos dados da API, usa o texto da API (que vem completo) em vez do DOM (que pode truncar)
+      if (apiHighlights.length > 0) {
+        console.log(`  Usando ${apiHighlights.length} highlights da API (texto completo)`);
+        bookList[i].highlights = apiHighlights.map((apiData) => {
+          // Busca nota vinculada a este highlight (mesma posição end)
+          const linkedNote = apiNotes.find(n => n.start === apiData.end || n.position === apiData.end);
+          // Tenta encontrar dados do DOM para cor, capítulo, página
+          const domMatch = highlights.find(h => {
+            // Match por texto parcial (DOM pode ter truncado)
+            return apiData.highlight && h.text && apiData.highlight.substring(0, 80) === h.text.substring(0, 80);
+          });
+          return {
+            text: apiData.highlight || (domMatch ? domMatch.text : ''),
+            note: linkedNote ? linkedNote.note : (domMatch ? domMatch.note : ''),
+            location: domMatch ? domMatch.location : '',
+            color: domMatch ? domMatch.color : 'yellow',
+            type: 'highlight',
+            page: domMatch ? domMatch.page : '',
+            locationNum: '',
+            date: '',
+            chapter: domMatch ? domMatch.chapter : '',
+            _position: apiData.position || null,
+            _start: apiData.start || null,
+            _end: apiData.end || null,
+            _guid: apiData.guid || null,
+            _dsn: apiData.dsn || null,
+            _positionType: apiData.positionType || 'YJBinary',
+          };
+        });
+      } else {
+        // Fallback: usa dados do DOM
+        bookList[i].highlights = highlights.map((h, idx) => {
+          return {
+            text: h.text,
+            note: h.note,
+            location: h.location,
+            color: h.color,
+            type: h.type,
+            page: h.page,
+            locationNum: '',
+            date: '',
+            chapter: h.chapter,
+            _position: null,
+            _start: null,
+            _end: null,
+            _guid: null,
+            _dsn: null,
+            _positionType: 'YJBinary',
+          };
+        });
+      }
 
       const notesCount = bookList[i].highlights.filter(h => h.note).length;
       console.log(`  ${bookList[i].highlights.length} destaques encontrados (${notesCount} com notas)`);
