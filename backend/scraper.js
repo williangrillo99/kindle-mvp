@@ -213,119 +213,103 @@ async function scrapeAll() {
     console.log(`\n[${i + 1}/${bookList.length}] Abrindo: ${bookList[i].title}`);
 
     try {
-      await page.goto(`${CLOUD_READER_URL}/?asin=${asin}`, {
+      // Navega direto para o Notebook do livro (mostra highlights completos)
+      await page.goto(`${CLOUD_READER_URL}/notebook?asin=${asin}`, {
         waitUntil: 'domcontentloaded',
         timeout: 30000,
       });
-      // Espera o livro carregar (toolbar ou conteúdo)
+      // Espera os highlights carregarem
       try {
-        await page.waitForSelector('[data-testid="top_menu_notebook"], .footer-label', { timeout: 10000 });
+        await page.waitForSelector('#annotation-scroller, .kp-notebook-annotations-container, .a-row.kp-notebook-row', { timeout: 10000 });
       } catch {
         await page.waitForTimeout(3000);
       }
 
-      // Fecha alert "Most Recent Page Read" se aparecer
-      try {
-        const alertBtn = await page.$('ion-alert button');
-        if (alertBtn) await alertBtn.click();
-        await page.waitForTimeout(300);
-      } catch {}
-
-      // Clica no centro para mostrar a toolbar
-      await page.mouse.click(400, 300);
-      await page.waitForTimeout(500);
-
-      // Extrai progresso de leitura do footer
-      const progress = await page.evaluate(() => {
-        const footerEl = document.querySelector('.footer-label.position .text-div, ion-title.footer-label.position');
-        if (!footerEl) return null;
-        const text = footerEl.textContent.trim();
-        const match = text.match(/Page\s+(\d+)\s+of\s+(\d+)\s*●?\s*(\d+)%?/i);
-        if (match) {
-          return { currentPage: parseInt(match[1]), totalPages: parseInt(match[2]), percent: parseInt(match[3]) };
-        }
-        return null;
+      // Debug: mostra URL e primeiros elementos da página
+      const debugInfo = await page.evaluate(() => {
+        return {
+          url: window.location.href,
+          title: document.title,
+          bodySnippet: document.body.innerHTML.substring(0, 1000),
+        };
       });
-      if (progress) {
-        bookList[i].progress = progress;
-        console.log(`  Progresso: Pág. ${progress.currentPage}/${progress.totalPages} (${progress.percent}%)`);
-      }
+      console.log(`  URL: ${debugInfo.url}`);
+      console.log(`  Title: ${debugInfo.title}`);
+      console.log(`  Body: ${debugInfo.bodySnippet.substring(0, 500)}`);
 
-      // Abre o painel de Annotations via JS (evita timeout de click)
-      await page.evaluate(() => {
-        const btn = document.querySelector('[data-testid="top_menu_notebook"]');
-        if (btn) btn.click();
-      });
-      // Espera o painel de notebook carregar
-      try {
-        await page.waitForSelector('.notebook-chapter, .notebook-editable-item-wrapper', { timeout: 5000 });
-      } catch {
-        await page.waitForTimeout(1500);
-      }
-
-      // Extrai highlights do painel de annotations
+      // Extrai highlights da página do Notebook
       const highlights = await page.evaluate(() => {
         const results = [];
+
+        // Tenta seletores do Kindle Notebook (read.amazon.com/notebook)
+        const annotations = document.querySelectorAll('#highlight, .kp-notebook-highlight, [id^="highlight-"]');
+        if (annotations.length > 0) {
+          annotations.forEach(el => {
+            const text = el.textContent.trim();
+            if (!text) return;
+            // Busca nota associada (próximo sibling ou dentro do mesmo container)
+            const parent = el.closest('.a-row, .kp-notebook-row, [id^="annotation-"]');
+            let note = '';
+            let page = '';
+            let color = 'yellow';
+            let chapter = '';
+            if (parent) {
+              const noteEl = parent.querySelector('#note, .kp-notebook-note, [id^="note-"]');
+              if (noteEl) note = noteEl.textContent.trim();
+              const metaEl = parent.querySelector('#annotationHighlightHeader, .kp-notebook-metadata, .a-color-secondary');
+              if (metaEl) {
+                const metaText = metaEl.textContent.trim();
+                const pageMatch = metaText.match(/Page\s+(\d+)/i) || metaText.match(/P[aá]g[a-z]*\.?\s+(\d+)/i) || metaText.match(/Location\s+(\d+)/i);
+                if (pageMatch) page = pageMatch[1];
+                const colorMatch = metaText.match(/(Yellow|Blue|Pink|Orange)/i);
+                if (colorMatch) color = colorMatch[1].toLowerCase();
+              }
+            }
+            results.push({ text, note, color, type: 'highlight', page, chapter, location: '', locationNum: '' });
+          });
+          return results;
+        }
+
+        // Fallback: seletores do Cloud Reader notebook panel
         const chapters = document.querySelectorAll('.notebook-chapter');
-
-        chapters.forEach(chapter => {
-          const chapterTitle = chapter.querySelector('.notebook-chapter--title')?.textContent.trim() || '';
-
-          chapter.querySelectorAll('.notebook-editable-item-wrapper').forEach(wrapper => {
+        chapters.forEach(ch => {
+          const chapterTitle = ch.querySelector('.notebook-chapter--title')?.textContent.trim() || '';
+          ch.querySelectorAll('.notebook-editable-item-wrapper').forEach(wrapper => {
             const titleEl = wrapper.querySelector('p.grouped-annotation_title');
             const textEl = wrapper.querySelector('p.notebook-editable-item-black');
             const colorEl = wrapper.querySelector('[class*="notebook-editable-item__highlight-color--"]');
-            // Busca nota com seletores amplos
             const noteEl = wrapper.querySelector('.notebook-editable-item--note, [class*="note-text"], p.notebook-editable-item-gray, .notebook-editable-item-note');
-
             if (!textEl) return;
-
             const headerText = titleEl ? titleEl.textContent.trim() : '';
             const text = textEl.textContent.trim();
             if (!text) return;
-
-            // Extrai tipo e pagina do header (ex: "Highlight • Page 10", "Note • Page 15")
             let type = 'highlight';
-            if (/^Note/i.test(headerText) || /^Nota/i.test(headerText)) return; // Ignora notas standalone
+            if (/^Note/i.test(headerText) || /^Nota/i.test(headerText)) return;
             else if (/^Bookmark/i.test(headerText) || /^Marcador/i.test(headerText)) type = 'bookmark';
-
             let page = '';
             const pageMatch = headerText.match(/Page\s+(\d+)/i) || headerText.match(/P[aá]g[a-z]*\.?\s+(\d+)/i);
             if (pageMatch) page = pageMatch[1];
-
-            // Extrai cor
             let color = 'yellow';
             if (colorEl) {
               const cls = colorEl.className || '';
               const colorMatch = cls.match(/highlight-color--(\w+)/);
               if (colorMatch) color = colorMatch[1];
             }
-
-            // Nota (se existir) — tenta varios seletores
             let note = '';
             if (noteEl) {
               note = noteEl.textContent.trim();
             } else {
-              // Fallback: busca o segundo <p> com texto dentro do wrapper (o primeiro e o highlight)
               const allPs = wrapper.querySelectorAll('p');
               for (const p of allPs) {
                 if (p === textEl || p === titleEl) continue;
                 if (p.classList.contains('grouped-annotation_title')) continue;
                 const pText = p.textContent.trim();
-                if (pText && pText !== text) {
-                  note = pText;
-                  break;
-                }
+                if (pText && pText !== text) { note = pText; break; }
               }
             }
-
-            results.push({
-              text, note, color, type, page, chapter: chapterTitle,
-              location: headerText, locationNum: '',
-            });
+            results.push({ text, note, color, type, page, chapter: chapterTitle, location: headerText, locationNum: '' });
           });
         });
-
         return results;
       });
 
@@ -336,57 +320,44 @@ async function scrapeAll() {
 
       bookList[i]._revision = revisionCache[asin] || '';
 
-      // Se temos dados da API, usa o texto da API (que vem completo) em vez do DOM (que pode truncar)
-      if (apiHighlights.length > 0) {
-        console.log(`  Usando ${apiHighlights.length} highlights da API (texto completo)`);
-        bookList[i].highlights = apiHighlights.map((apiData) => {
-          // Busca nota vinculada a este highlight (mesma posição end)
-          const linkedNote = apiNotes.find(n => n.start === apiData.end || n.position === apiData.end);
-          // Tenta encontrar dados do DOM para cor, capítulo, página
-          const domMatch = highlights.find(h => {
-            // Match por texto parcial (DOM pode ter truncado)
-            return apiData.context && h.text && apiData.context.substring(0, 80) === h.text.substring(0, 80);
-          });
-          return {
-            text: apiData.context || (domMatch ? domMatch.text : ''),
-            note: linkedNote ? linkedNote.note : (domMatch ? domMatch.note : ''),
-            location: domMatch ? domMatch.location : '',
-            color: domMatch ? domMatch.color : 'yellow',
-            type: 'highlight',
-            page: domMatch ? domMatch.page : '',
-            locationNum: '',
-            date: '',
-            chapter: domMatch ? domMatch.chapter : '',
-            _position: apiData.position || null,
-            _start: apiData.start || null,
-            _end: apiData.end || null,
-            _guid: apiData.guid || null,
-            _dsn: apiData.dsn || null,
-            _positionType: apiData.positionType || 'YJBinary',
-          };
+      // Usa highlights do DOM como base e enriquece com dados da API (guid, position, nota)
+      // DOM tem texto mais completo; API tem metadados para edição de notas
+      bookList[i].highlights = highlights.map((h) => {
+        // Busca match na API pelo início do texto
+        const apiMatch = apiHighlights.find(a => {
+          if (!a.context || !h.text) return false;
+          const apiSnippet = a.context.substring(0, 60);
+          return h.text.includes(apiSnippet) || apiSnippet.includes(h.text.substring(0, 60));
         });
-      } else {
-        // Fallback: usa dados do DOM
-        bookList[i].highlights = highlights.map((h, idx) => {
-          return {
-            text: h.text,
-            note: h.note,
-            location: h.location,
-            color: h.color,
-            type: h.type,
-            page: h.page,
-            locationNum: '',
-            date: '',
-            chapter: h.chapter,
-            _position: null,
-            _start: null,
-            _end: null,
-            _guid: null,
-            _dsn: null,
-            _positionType: 'YJBinary',
-          };
-        });
-      }
+        // Usa o texto mais longo entre DOM e API
+        let text = h.text;
+        if (apiMatch && apiMatch.context && apiMatch.context.length > text.length) {
+          text = apiMatch.context;
+        }
+        // Busca nota vinculada na API
+        let note = h.note;
+        if (apiMatch && !note) {
+          const linkedNote = apiNotes.find(n => n.start === apiMatch.end || n.position === apiMatch.end);
+          if (linkedNote) note = linkedNote.note;
+        }
+        return {
+          text,
+          note,
+          location: h.location,
+          color: h.color,
+          type: h.type,
+          page: h.page,
+          locationNum: '',
+          date: '',
+          chapter: h.chapter,
+          _position: apiMatch ? apiMatch.position : null,
+          _start: apiMatch ? apiMatch.start : null,
+          _end: apiMatch ? apiMatch.end : null,
+          _guid: apiMatch ? apiMatch.guid : null,
+          _dsn: apiMatch ? apiMatch.dsn : null,
+          _positionType: apiMatch ? apiMatch.positionType : 'YJBinary',
+        };
+      });
 
       const notesCount = bookList[i].highlights.filter(h => h.note).length;
       console.log(`  ${bookList[i].highlights.length} destaques encontrados (${notesCount} com notas)`);
