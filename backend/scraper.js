@@ -333,6 +333,11 @@ async function scrapeAll() {
 
       bookList[i]._revision = revisionCache[asin] || '';
 
+      // DEBUG: mostra estrutura do primeiro highlight da API
+      if (apiHighlights.length > 0) {
+        console.log('[DEBUG] Primeiro highlight API:', JSON.stringify(apiHighlights[0], null, 2));
+      }
+
       // Se temos dados da API, usa o texto da API (que vem completo) em vez do DOM (que pode truncar)
       if (apiHighlights.length > 0) {
         console.log(`  Usando ${apiHighlights.length} highlights da API (texto completo)`);
