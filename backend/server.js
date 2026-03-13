@@ -1,7 +1,8 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
+const uuidv4 = () => crypto.randomUUID();
 const { openLogin, waitForLogin, scrapeAll, closeBrowser, editNote, getSyncProgress } = require('./scraper');
 const { stmts } = require('./db');
 const { hashPassword, comparePassword, generateToken, authMiddleware } = require('./auth');
@@ -17,7 +18,7 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // ========== AUTH ROUTES (públicas) ==========
 
-app.post('/api/auth/register', (req, res) => {
+app.post('/ ', (req, res) => {
   const { email, password, name } = req.body;
   if (!email || !password) {
     return res.status(400).json({ error: 'Email e senha são obrigatórios' });
