@@ -213,7 +213,43 @@ async function scrapeAll() {
     console.log(`\n[${i + 1}/${bookList.length}] Abrindo: ${bookList[i].title}`);
 
     try {
-      // Navega direto para o Notebook do livro (mostra highlights completos)
+      // Passo 1: Abre no Cloud Reader pra pegar progresso + API annotations
+      await page.goto(`${CLOUD_READER_URL}/?asin=${asin}`, {
+        waitUntil: 'domcontentloaded',
+        timeout: 30000,
+      });
+      try {
+        await page.waitForSelector('.footer-label, [data-testid="top_menu_notebook"]', { timeout: 8000 });
+      } catch {}
+
+      // Fecha alert "Most Recent Page Read" se aparecer
+      try {
+        const alertBtn = await page.$('ion-alert button');
+        if (alertBtn) await alertBtn.click();
+        await page.waitForTimeout(300);
+      } catch {}
+
+      // Clica no centro para mostrar a toolbar
+      await page.mouse.click(400, 300);
+      await page.waitForTimeout(500);
+
+      // Extrai progresso de leitura
+      const progress = await page.evaluate(() => {
+        const footerEl = document.querySelector('.footer-label.position .text-div, ion-title.footer-label.position');
+        if (!footerEl) return null;
+        const text = footerEl.textContent.trim();
+        const match = text.match(/Page\s+(\d+)\s+of\s+(\d+)\s*●?\s*(\d+)%?/i);
+        if (match) {
+          return { currentPage: parseInt(match[1]), totalPages: parseInt(match[2]), percent: parseInt(match[3]) };
+        }
+        return null;
+      });
+      if (progress) {
+        bookList[i].progress = progress;
+        console.log(`  Progresso: Pág. ${progress.currentPage}/${progress.totalPages} (${progress.percent}%)`);
+      }
+
+      // Passo 2: Navega para o Notebook pra pegar texto completo dos highlights
       await page.goto(`${CLOUD_READER_URL}/notebook?asin=${asin}`, {
         waitUntil: 'domcontentloaded',
         timeout: 30000,
