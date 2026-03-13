@@ -18,7 +18,7 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // ========== AUTH ROUTES (públicas) ==========
 
-app.post('/ ', (req, res) => {
+app.post('/api/auth/register', (req, res) => {
   const { email, password, name } = req.body;
   if (!email || !password) {
     return res.status(400).json({ error: 'Email e senha são obrigatórios' });
