@@ -603,7 +603,75 @@
       cursor: not-allowed;
     }
 
-    /* ==================== LOGIN SCREEN ==================== */
+    /* ==================== AUTH SCREEN ==================== */
+    .auth-screen {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      width: 100%;
+      gap: 20px;
+    }
+
+    .auth-screen h1 { font-size: 32px; font-weight: 700; }
+    .auth-screen h1 span { color: var(--accent); }
+
+    .auth-screen p {
+      color: var(--text-secondary);
+      font-size: 15px;
+      max-width: 400px;
+      text-align: center;
+      line-height: 1.6;
+    }
+
+    .auth-form {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      width: 100%;
+      max-width: 360px;
+      padding: 0 20px;
+    }
+
+    .auth-form input {
+      width: 100%;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 16px;
+      color: var(--text-primary);
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .auth-form input:focus { border-color: var(--accent); }
+
+    .auth-form input::placeholder { color: var(--text-muted); }
+
+    .auth-toggle {
+      color: var(--text-secondary);
+      font-size: 13px;
+      text-align: center;
+    }
+
+    .auth-toggle a {
+      color: var(--accent);
+      cursor: pointer;
+      text-decoration: none;
+    }
+
+    .auth-toggle a:hover { color: var(--accent-hover); }
+
+    .auth-error {
+      color: var(--pink);
+      font-size: 13px;
+      text-align: center;
+      min-height: 20px;
+    }
+
+    /* ==================== LOGIN SCREEN (Amazon) ==================== */
     .login-screen {
       display: flex;
       flex-direction: column;
@@ -1087,34 +1155,79 @@
     let searchQuery = '';
     let bookSearchQuery = '';
     let activeColorFilter = 'all';
-    let editingNote = null; // { highlightIndex }
-    let selectedHighlight = null; // index of highlight with note being viewed in split
-    let modalHighlightText = null; // texto completo para exibir no modal
+    let editingNote = null;
+    let selectedHighlight = null;
+    let currentUser = null;
+    let authMode = 'login'; // 'login' ou 'register'
 
     const EDIT_ICON = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" /></svg>`;
     const BOOK_ICON = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" /></svg>`;
     const COPY_ICON = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M15.666 3.888A2.25 2.25 0 0 0 13.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 0 1-.75.75H9.75a.75.75 0 0 1-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 0 1 1.927-.184" /></svg>`;
+    const LOGOUT_ICON = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" style="width:16px;height:16px;"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15m3 0 3-3m0 0-3-3m3 3H9" /></svg>`;
+
+    // ==================== API HELPER ====================
+
+    function apiFetch(url, options = {}) {
+      const token = localStorage.getItem('token');
+      options.headers = {
+        ...options.headers,
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+      };
+      return fetch(url, options);
+    }
 
     // ==================== RENDER ====================
 
     function render() {
-      if (books.length === 0) {
-        renderLogin();
+      if (!currentUser) {
+        renderAuth();
+      } else if (books.length === 0) {
+        renderAmazonConnect();
       } else {
         renderDashboard();
       }
     }
 
-    function renderLogin() {
+    function renderAuth() {
+      const isRegister = authMode === 'register';
+      app.innerHTML = `
+        <div class="auth-screen">
+          <h1>Kindle<span>Sync</span></h1>
+          <p>${isRegister ? 'Crie sua conta para sincronizar seus destaques do Kindle.' : 'Entre na sua conta para acessar seus destaques.'}</p>
+          <form class="auth-form" id="auth-form">
+            ${isRegister ? '<input type="text" name="name" placeholder="Nome" autocomplete="name">' : ''}
+            <input type="email" name="email" placeholder="Email" autocomplete="email" required>
+            <input type="password" name="password" placeholder="Senha" autocomplete="${isRegister ? 'new-password' : 'current-password'}" required minlength="6">
+            <button type="submit" class="btn-connect">${isRegister ? 'Criar conta' : 'Entrar'}</button>
+          </form>
+          <div class="auth-error" id="auth-error"></div>
+          <div class="auth-toggle">
+            ${isRegister
+              ? 'Ja tem uma conta? <a id="auth-switch">Entrar</a>'
+              : 'Nao tem conta? <a id="auth-switch">Criar conta</a>'}
+          </div>
+        </div>
+      `;
+      document.getElementById('auth-form').addEventListener('submit', handleAuth);
+      document.getElementById('auth-switch').addEventListener('click', () => {
+        authMode = authMode === 'login' ? 'register' : 'login';
+        render();
+      });
+    }
+
+    function renderAmazonConnect() {
       app.innerHTML = `
         <div class="login-screen">
           <h1>Kindle<span>Sync</span></h1>
-          <p>Conecte sua conta Amazon para importar seus livros e destaques do Kindle.</p>
-          <button class="btn-connect" id="btn-login">Conectar Amazon Kindle</button>
+          <p>Ola, ${escapeHtml(currentUser.name || currentUser.email)}! Conecte sua conta Amazon para importar seus livros e destaques.</p>
+          <button class="btn-connect" id="btn-login">Sincronizar com Amazon Kindle</button>
           <div class="status-text" id="status"></div>
+          <button style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:12px;margin-top:10px;" id="btn-logout">Sair da conta</button>
         </div>
       `;
-      document.getElementById('btn-login').addEventListener('click', handleLogin);
+      document.getElementById('btn-login').addEventListener('click', handleAmazonSync);
+      document.getElementById('btn-logout').addEventListener('click', handleLogout);
     }
 
     function renderDashboard() {
@@ -1158,7 +1271,10 @@
         <div class="sidebar" id="sidebar">
           <div class="sidebar-header">
             <h1>Kindle<span>Sync</span></h1>
-            <button class="btn-resync" id="btn-resync">Sincronizar</button>
+            <div style="display:flex;gap:6px;align-items:center;">
+              <button class="btn-resync" id="btn-resync">Sincronizar</button>
+              <button class="btn-resync" id="btn-logout-dash" title="Sair" style="padding:6px 8px;">${LOGOUT_ICON}</button>
+            </div>
           </div>
           <div class="sidebar-search">
             <input type="text" placeholder="Buscar livros..." id="book-search" value="${escapeHtml(bookSearchQuery)}">
@@ -1342,7 +1458,11 @@
 
       // Resync mobile
       const resyncMobile = document.getElementById('btn-resync-mobile');
-      if (resyncMobile) resyncMobile.addEventListener('click', handleLogin);
+      if (resyncMobile) resyncMobile.addEventListener('click', handleAmazonSync);
+
+      // Logout
+      const logoutBtn = document.getElementById('btn-logout-dash');
+      if (logoutBtn) logoutBtn.addEventListener('click', handleLogout);
 
       // Back button (mobile split)
       const backBtn = document.getElementById('close-split-back');
@@ -1495,9 +1615,8 @@
           splitSave.disabled = true;
           splitSave.textContent = 'Salvando...';
           try {
-            const res = await fetch(`${API_URL}/api/books/${selectedBook}/highlights/${selectedHighlight}/note`, {
+            const res = await apiFetch(`${API_URL}/api/books/${selectedBook}/highlights/${selectedHighlight}/note`, {
               method: 'PUT',
-              headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ note: newNote }),
             });
             const data = await res.json();
@@ -1513,13 +1632,67 @@
 
       const resyncBtn = document.getElementById('btn-resync');
       if (resyncBtn) {
-        resyncBtn.addEventListener('click', handleLogin);
+        resyncBtn.addEventListener('click', handleAmazonSync);
       }
     }
 
     // ==================== ACTIONS ====================
 
-    async function handleLogin() {
+    async function handleAuth(e) {
+      e.preventDefault();
+      const form = e.target;
+      const errorEl = document.getElementById('auth-error');
+      const btn = form.querySelector('button[type="submit"]');
+      const email = form.email.value;
+      const password = form.password.value;
+      const name = form.name?.value || '';
+
+      btn.disabled = true;
+      errorEl.textContent = '';
+
+      try {
+        const endpoint = authMode === 'register' ? '/api/auth/register' : '/api/auth/login';
+        const body = authMode === 'register' ? { email, password, name } : { email, password };
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          errorEl.textContent = data.error || 'Erro ao autenticar';
+          btn.disabled = false;
+          return;
+        }
+        localStorage.setItem('token', data.token);
+        currentUser = data.user;
+        await loadBooks();
+        render();
+      } catch (err) {
+        errorEl.textContent = 'Erro de conexao: ' + err.message;
+        btn.disabled = false;
+      }
+    }
+
+    function handleLogout() {
+      localStorage.removeItem('token');
+      currentUser = null;
+      books = [];
+      selectedBook = null;
+      render();
+    }
+
+    async function loadBooks() {
+      try {
+        const res = await apiFetch('/api/books');
+        if (res.ok) {
+          books = await res.json();
+          if (books.length > 0) selectedBook = 0;
+        }
+      } catch {}
+    }
+
+    async function handleAmazonSync() {
       const btn = document.getElementById('btn-login') || document.getElementById('btn-resync');
       const status = document.getElementById('status');
 
@@ -1527,12 +1700,12 @@
       if (status) status.innerHTML = '<span class="spinner"></span> Abrindo login da Amazon...';
 
       try {
-        await fetch(`${API_URL}/api/login`, { method: 'POST' });
+        await apiFetch(`${API_URL}/api/login`, { method: 'POST' });
         if (status) status.innerHTML = '<span class="spinner"></span> Aguardando login no Chrome...';
 
         let loggedIn = false;
         while (!loggedIn) {
-          const res = await fetch(`${API_URL}/api/login/status`);
+          const res = await apiFetch(`${API_URL}/api/login/status`);
           const data = await res.json();
           if (data.status === 'logged_in') {
             loggedIn = true;
@@ -1547,13 +1720,11 @@
 
         if (status) status.innerHTML = '<span class="spinner"></span> Sincronizando livros e destaques...';
 
-        // Inicia sync em background e polled progresso
-        const syncPromise = fetch(`${API_URL}/api/sync`, { method: 'POST' }).then(r => r.json());
+        const syncPromise = apiFetch(`${API_URL}/api/sync`, { method: 'POST' }).then(r => r.json());
 
-        // Poll progresso enquanto sync roda
         const progressInterval = setInterval(async () => {
           try {
-            const pRes = await fetch(`${API_URL}/api/sync/progress`);
+            const pRes = await apiFetch(`${API_URL}/api/sync/progress`);
             const progress = await pRes.json();
             if (progress.total > 0 && status) {
               status.innerHTML = `<span class="spinner"></span> Extraindo livro ${progress.current}/${progress.total}: ${progress.bookTitle}`;
@@ -1563,18 +1734,6 @@
 
         const syncData = await syncPromise;
         clearInterval(progressInterval);
-
-        console.log('=== RESULTADO DO SCRAPING ===');
-        console.log('Total de livros:', syncData.books?.length);
-        syncData.books?.forEach((book, i) => {
-          console.log(`\nLivro ${i + 1}: ${book.title}`);
-          console.log(`  Autor: ${book.author}`);
-          console.log(`  ASIN: ${book.asin}`);
-          console.log(`  Highlights: ${book.highlights.length}`);
-          book.highlights.forEach((h, j) => {
-            console.log(`  [${j + 1}] ${h.text.substring(0, 100)}...`);
-          });
-        });
 
         if (syncData.books) {
           books = syncData.books;
@@ -1596,7 +1755,24 @@
     }
 
     // ==================== INIT ====================
-    render();
+    async function init() {
+      const token = localStorage.getItem('token');
+      if (token) {
+        try {
+          const res = await apiFetch('/api/auth/me');
+          if (res.ok) {
+            currentUser = await res.json();
+            await loadBooks();
+          } else {
+            localStorage.removeItem('token');
+          }
+        } catch {
+          localStorage.removeItem('token');
+        }
+      }
+      render();
+    }
+    init();
   </script>
 </body>
 </html>

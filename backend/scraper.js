@@ -1,28 +1,25 @@
 const { chromium } = require('playwright');
-const fs = require('fs');
-const path = require('path');
-
-let browser = null;
-let context = null;
-let page = null;
-let syncProgress = { current: 0, total: 0, bookTitle: '' };
 
 const CLOUD_READER_URL = 'https://ler.amazon.com.br';
 const LOGIN_URL = 'https://www.amazon.com.br/ap/signin?openid.pape.max_auth_age=1209600&openid.return_to=https%3A%2F%2Fler.amazon.com.br%2Fkindle-library&openid.identity=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select&openid.assoc_handle=amzn_kindle_mykindle_br&openid.mode=checkid_setup&language=pt_BR&openid.claimed_id=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select&pageId=amzn_kindle_mykindle_br&openid.ns=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0';
-const SESSION_FILE = path.join(__dirname, '..', '.session.json');
 
-function getSyncProgress() {
-  return syncProgress;
+// Instâncias por usuário: Map<userId, { browser, context, page, syncProgress, adpToken }>
+const userSessions = new Map();
+
+function getSession(userId) {
+  return userSessions.get(userId) || null;
 }
 
-function hasSavedSession() {
-  return fs.existsSync(SESSION_FILE);
+function getSyncProgress(userId) {
+  const s = getSession(userId);
+  return s ? s.syncProgress : { current: 0, total: 0, bookTitle: '' };
 }
 
-async function openLogin() {
-  if (browser) return;
+async function openLogin(userId, savedSessionData) {
+  let s = getSession(userId);
+  if (s && s.browser) return;
 
-  browser = await chromium.launch({
+  const browser = await chromium.launch({
     headless: false,
     args: [
       '--disable-blink-features=AutomationControlled',
@@ -38,30 +35,31 @@ async function openLogin() {
     timezoneId: 'America/Sao_Paulo',
   };
 
-  // Restaura sessao salva se existir
-  if (hasSavedSession()) {
+  // Restaura sessão salva do DB se existir
+  if (savedSessionData) {
     try {
-      contextOptions.storageState = SESSION_FILE;
-      console.log('Restaurando sessao salva...');
+      contextOptions.storageState = JSON.parse(savedSessionData);
+      console.log(`[${userId}] Restaurando sessão salva...`);
     } catch {
-      console.log('Sessao salva invalida, ignorando...');
+      console.log(`[${userId}] Sessão salva inválida, ignorando...`);
     }
   }
 
-  context = await browser.newContext(contextOptions);
+  const context = await browser.newContext(contextOptions);
 
   await context.addInitScript(() => {
     Object.defineProperty(navigator, 'webdriver', { get: () => false });
   });
 
-  page = await context.newPage();
+  const page = await context.newPage();
+
+  s = { browser, context, page, syncProgress: { current: 0, total: 0, bookTitle: '' }, adpToken: '' };
+  userSessions.set(userId, s);
 
   // Detecta quando o usuario fecha o browser
   browser.on('disconnected', () => {
-    console.log('Browser fechado pelo usuario');
-    browser = null;
-    context = null;
-    page = null;
+    console.log(`[${userId}] Browser fechado pelo usuario`);
+    userSessions.delete(userId);
   });
 
   await page.goto(LOGIN_URL, {
@@ -72,29 +70,28 @@ async function openLogin() {
   return { status: 'login_opened' };
 }
 
-async function waitForLogin(timeoutMs = 120000) {
-  // Browser foi fechado pelo usuario
-  if (!page || !browser) {
+async function waitForLogin(userId, timeoutMs = 120000) {
+  const s = getSession(userId);
+  if (!s || !s.page || !s.browser) {
     return { status: 'browser_closed' };
   }
 
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
-    // Verifica se browser foi fechado durante o polling
-    if (!page || !browser) {
+    if (!s.page || !s.browser) {
       return { status: 'browser_closed' };
     }
 
     try {
-      const url = page.url();
+      const url = s.page.url();
       if (url.includes('ler.amazon') && url.includes('/kindle-library') && !url.includes('signin') && !url.includes('/ap/')) {
-        await page.waitForTimeout(2000);
-        await saveSession();
-        return { status: 'logged_in' };
+        await s.page.waitForTimeout(2000);
+        // Retorna o estado da sessão pro server salvar no DB
+        const sessionState = await s.context.storageState();
+        return { status: 'logged_in', sessionState, adpToken: s.adpToken };
       }
-      await page.waitForTimeout(1000);
+      await s.page.waitForTimeout(1000);
     } catch {
-      // page.url() falha se o browser foi fechado
       return { status: 'browser_closed' };
     }
   }
@@ -102,29 +99,18 @@ async function waitForLogin(timeoutMs = 120000) {
   throw new Error('Timeout esperando login');
 }
 
-async function saveSession() {
-  if (!context) return;
-  try {
-    const state = await context.storageState();
-    fs.writeFileSync(SESSION_FILE, JSON.stringify(state, null, 2));
-    console.log('Sessao salva em', SESSION_FILE);
-  } catch (err) {
-    console.error('Erro ao salvar sessao:', err.message);
-  }
-}
+async function scrapeAll(userId) {
+  const s = getSession(userId);
+  if (!s || !s.page) throw new Error('Browser não iniciado');
 
-async function scrapeAll() {
-  if (!page) throw new Error('Browser não iniciado');
+  const { page } = s;
 
   // Captura dados brutos de annotations e x-adp-session-token
   const annotationsCache = {};
   const revisionCache = {};
-  let adpSessionToken = '';
   page.on('request', req => {
-    const url = req.url();
-    // Captura x-adp-session-token de qualquer request
     const adp = req.headers()['x-adp-session-token'];
-    if (adp) adpSessionToken = adp;
+    if (adp) s.adpToken = adp;
   });
   page.on('response', async res => {
     const url = res.url();
@@ -138,7 +124,7 @@ async function scrapeAll() {
           if (revisionMatch) {
             revisionCache[asinMatch[1]] = revisionMatch[1];
           }
-          console.log(`[NET] Cached ${body.annotations.length} annotations for ${asinMatch[1]} (revision=${revisionMatch ? revisionMatch[1] : 'N/A'})`);
+          console.log(`[NET] Cached ${body.annotations.length} annotations for ${asinMatch[1]}`);
         }
       } catch {}
     }
@@ -150,14 +136,13 @@ async function scrapeAll() {
     waitUntil: 'domcontentloaded',
     timeout: 30000,
   });
-  // Espera o JSON da biblioteca carregar (max 10s)
   try {
     await page.waitForSelector('#itemViewResponse', { timeout: 10000 });
   } catch {
     await page.waitForTimeout(2000);
   }
 
-  // Extrai lista de livros do JSON embutido (#itemViewResponse)
+  // Extrai lista de livros do JSON embutido
   let bookList = await page.evaluate(() => {
     const jsonEl = document.querySelector('#itemViewResponse');
     if (jsonEl) {
@@ -202,14 +187,14 @@ async function scrapeAll() {
   if (bookList.length === 0) return [];
 
   bookList.forEach((b, idx) => console.log(`  [${idx}] ASIN=${b.asin} - ${b.title}`));
-  syncProgress = { current: 0, total: bookList.length, bookTitle: '' };
+  s.syncProgress = { current: 0, total: bookList.length, bookTitle: '' };
 
   // 2) Para cada livro: abre no Cloud Reader e extrai dados
   for (let i = 0; i < bookList.length; i++) {
     const asin = bookList[i].asin;
     if (!asin) continue;
 
-    syncProgress = { current: i + 1, total: bookList.length, bookTitle: bookList[i].title };
+    s.syncProgress = { current: i + 1, total: bookList.length, bookTitle: bookList[i].title };
     console.log(`\n[${i + 1}/${bookList.length}] Abrindo: ${bookList[i].title}`);
 
     try {
@@ -254,7 +239,6 @@ async function scrapeAll() {
         waitUntil: 'domcontentloaded',
         timeout: 30000,
       });
-      // Espera os highlights carregarem
       try {
         await page.waitForSelector('#annotation-scroller, .kp-notebook-annotations-container, .a-row.kp-notebook-row', { timeout: 10000 });
       } catch {
@@ -265,13 +249,12 @@ async function scrapeAll() {
       const highlights = await page.evaluate(() => {
         const results = [];
 
-        // Tenta seletores do Kindle Notebook (read.amazon.com/notebook)
+        // Tenta seletores do Kindle Notebook
         const annotations = document.querySelectorAll('#highlight, .kp-notebook-highlight, [id^="highlight-"]');
         if (annotations.length > 0) {
           annotations.forEach(el => {
             const text = el.textContent.trim();
             if (!text) return;
-            // Busca nota associada (próximo sibling ou dentro do mesmo container)
             const parent = el.closest('.a-row, .kp-notebook-row, [id^="annotation-"]');
             let note = '';
             let page = '';
@@ -337,28 +320,23 @@ async function scrapeAll() {
         return results;
       });
 
-      // Enriquece highlights com dados da API (position, guid, dsn, texto completo)
+      // Enriquece highlights com dados da API (position, guid, dsn)
       const apiAnnotations = annotationsCache[asin] || [];
       const apiHighlights = apiAnnotations.filter(a => a.type === 'kindle.highlight');
       const apiNotes = apiAnnotations.filter(a => a.type === 'kindle.note');
 
       bookList[i]._revision = revisionCache[asin] || '';
 
-      // Usa highlights do DOM como base e enriquece com dados da API (guid, position, nota)
-      // DOM tem texto mais completo; API tem metadados para edição de notas
       bookList[i].highlights = highlights.map((h) => {
-        // Busca match na API pelo início do texto
         const apiMatch = apiHighlights.find(a => {
           if (!a.context || !h.text) return false;
           const apiSnippet = a.context.substring(0, 60);
           return h.text.includes(apiSnippet) || apiSnippet.includes(h.text.substring(0, 60));
         });
-        // Usa o texto mais longo entre DOM e API
         let text = h.text;
         if (apiMatch && apiMatch.context && apiMatch.context.length > text.length) {
           text = apiMatch.context;
         }
-        // Busca nota vinculada na API
         let note = h.note;
         if (apiMatch && !note) {
           const linkedNote = apiNotes.find(n => n.start === apiMatch.end || n.position === apiMatch.end);
@@ -383,7 +361,7 @@ async function scrapeAll() {
         };
       });
 
-      // Deduplica highlights pelo texto (primeiros 80 chars)
+      // Deduplica highlights pelo texto
       const seen = new Set();
       bookList[i].highlights = bookList[i].highlights.filter(h => {
         const key = h.text.substring(0, 80);
@@ -400,32 +378,33 @@ async function scrapeAll() {
     }
   }
 
-  // Salva o x-adp-session-token para uso no editNote
-  if (adpSessionToken) {
-    const tokenFile = path.join(__dirname, '..', '.adp-token.json');
-    fs.writeFileSync(tokenFile, JSON.stringify({ token: adpSessionToken }));
-    console.log(`[scrapeAll] ADP session token salvo (${adpSessionToken.substring(0, 30)}...)`);
-  }
+  // Salva sessão e retorna junto com os livros
+  let sessionState = null;
+  try {
+    sessionState = await s.context.storageState();
+  } catch {}
 
-  await saveSession();
+  // Anexa metadados de sessão ao resultado
+  bookList._sessionState = sessionState;
+  bookList._adpToken = s.adpToken;
+
   return bookList;
 }
 
-// Edita nota via HTTP usando cookies da sessão (sem browser)
-async function editNote(asin, highlightIndex, newNote, highlightData, bookData) {
+// Edita nota via HTTP usando cookies da sessão do DB
+async function editNote(asin, highlightIndex, newNote, highlightData, bookData, amazonSession) {
   console.log(`[editNote] Editando nota via HTTP - ASIN=${asin}, index=${highlightIndex}`);
 
   if (!highlightData || !highlightData._end || !highlightData._guid) {
     throw new Error('Dados da annotation não encontrados. Faça sync novamente.');
   }
 
-  // Carrega cookies da sessão
-  if (!fs.existsSync(SESSION_FILE)) {
-    throw new Error('Sessão não encontrada. Faça login primeiro.');
+  if (!amazonSession) {
+    throw new Error('Sessão Amazon não encontrada. Faça sync novamente.');
   }
 
-  const session = JSON.parse(fs.readFileSync(SESSION_FILE, 'utf-8'));
-  const cookies = session.cookies || [];
+  const sessionData = JSON.parse(amazonSession.session_data);
+  const cookies = sessionData.cookies || [];
 
   const cookieStr = cookies
     .filter(c => c.domain.includes('amazon'))
@@ -436,12 +415,7 @@ async function editNote(asin, highlightIndex, newNote, highlightData, bookData) 
     throw new Error('Cookies da Amazon não encontrados na sessão.');
   }
 
-  // Carrega x-adp-session-token
-  const tokenFile = path.join(__dirname, '..', '.adp-token.json');
-  let adpToken = '';
-  if (fs.existsSync(tokenFile)) {
-    adpToken = JSON.parse(fs.readFileSync(tokenFile, 'utf-8')).token || '';
-  }
+  const adpToken = amazonSession.adp_token || '';
   if (!adpToken) {
     throw new Error('ADP session token não encontrado. Faça sync novamente.');
   }
@@ -461,7 +435,6 @@ async function editNote(asin, highlightIndex, newNote, highlightData, bookData) 
   // 1) Busca CSRF token
   const csrfRes = await fetch(`${CLOUD_READER_URL}/reader/api/csrf/getToken`, { headers });
   const csrfToken = await csrfRes.text();
-  console.log(`[editNote] CSRF token: ${csrfToken.substring(0, 30)}...`);
 
   // 2) Monta body no formato Amazon Coral
   const noteAnnotation = {
@@ -491,15 +464,10 @@ async function editNote(asin, highlightIndex, newNote, highlightData, bookData) 
   };
 
   const updateUrl = `${CLOUD_READER_URL}/service/mobile/reader/updateAnnotations`;
-  console.log(`[editNote] POST ${updateUrl}`);
-  console.log(`[editNote] Body: ${JSON.stringify(body).substring(0, 500)}`);
 
   const updateRes = await fetch(updateUrl, {
     method: 'POST',
-    headers: {
-      ...headers,
-      'x-csrf-token': csrfToken,
-    },
+    headers: { ...headers, 'x-csrf-token': csrfToken },
     body: JSON.stringify(body),
   });
 
@@ -510,7 +478,6 @@ async function editNote(asin, highlightIndex, newNote, highlightData, bookData) 
     throw new Error(`API Amazon retornou ${updateRes.status}: ${responseText.substring(0, 200)}`);
   }
 
-  // Amazon retorna 200 mesmo com erro — checa o body
   try {
     const resJson = JSON.parse(responseText);
     if (resJson.Output && resJson.Output.__type && resJson.Output.__type.includes('Exception')) {
@@ -524,18 +491,19 @@ async function editNote(asin, highlightIndex, newNote, highlightData, bookData) 
   return { status: 'ok', note: newNote };
 }
 
-async function isBrowserOpen() {
-  return browser !== null && page !== null;
+async function closeBrowser(userId) {
+  const s = getSession(userId);
+  if (s && s.browser) {
+    try {
+      await s.browser.close();
+    } catch {}
+    userSessions.delete(userId);
+  }
 }
 
-async function closeBrowser() {
-  if (browser) {
-    await saveSession();
-    await browser.close();
-    browser = null;
-    context = null;
-    page = null;
-  }
+async function isBrowserOpen(userId) {
+  const s = getSession(userId);
+  return s !== null && s.browser !== null && s.page !== null;
 }
 
 module.exports = { openLogin, waitForLogin, scrapeAll, closeBrowser, editNote, isBrowserOpen, getSyncProgress };

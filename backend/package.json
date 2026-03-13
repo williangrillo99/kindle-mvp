@@ -6,8 +6,12 @@
     "start": "node server.js"
   },
   "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^12.6.2",
     "cors": "^2.8.5",
     "express": "^5.2.1",
-    "playwright": "^1.58.2"
+    "jsonwebtoken": "^9.0.3",
+    "playwright": "^1.58.2",
+    "uuid": "^13.0.0"
   }
 }
