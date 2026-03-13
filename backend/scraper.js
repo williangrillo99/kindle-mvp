@@ -261,18 +261,6 @@ async function scrapeAll() {
         await page.waitForTimeout(3000);
       }
 
-      // Debug: mostra URL e primeiros elementos da página
-      const debugInfo = await page.evaluate(() => {
-        return {
-          url: window.location.href,
-          title: document.title,
-          bodySnippet: document.body.innerHTML.substring(0, 1000),
-        };
-      });
-      console.log(`  URL: ${debugInfo.url}`);
-      console.log(`  Title: ${debugInfo.title}`);
-      console.log(`  Body: ${debugInfo.bodySnippet.substring(0, 500)}`);
-
       // Extrai highlights da página do Notebook
       const highlights = await page.evaluate(() => {
         const results = [];
@@ -393,6 +381,15 @@ async function scrapeAll() {
           _dsn: apiMatch ? apiMatch.dsn : null,
           _positionType: apiMatch ? apiMatch.positionType : 'YJBinary',
         };
+      });
+
+      // Deduplica highlights pelo texto (primeiros 80 chars)
+      const seen = new Set();
+      bookList[i].highlights = bookList[i].highlights.filter(h => {
+        const key = h.text.substring(0, 80);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
       });
 
       const notesCount = bookList[i].highlights.filter(h => h.note).length;
