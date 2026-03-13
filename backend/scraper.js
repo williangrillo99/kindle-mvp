@@ -150,7 +150,12 @@ async function scrapeAll() {
     waitUntil: 'domcontentloaded',
     timeout: 30000,
   });
-  await page.waitForTimeout(5000);
+  // Espera o JSON da biblioteca carregar (max 10s)
+  try {
+    await page.waitForSelector('#itemViewResponse', { timeout: 10000 });
+  } catch {
+    await page.waitForTimeout(2000);
+  }
 
   // Extrai lista de livros do JSON embutido (#itemViewResponse)
   let bookList = await page.evaluate(() => {
@@ -212,18 +217,23 @@ async function scrapeAll() {
         waitUntil: 'domcontentloaded',
         timeout: 30000,
       });
-      await page.waitForTimeout(8000);
+      // Espera o livro carregar (toolbar ou conteúdo)
+      try {
+        await page.waitForSelector('[data-testid="top_menu_notebook"], .footer-label', { timeout: 10000 });
+      } catch {
+        await page.waitForTimeout(3000);
+      }
 
       // Fecha alert "Most Recent Page Read" se aparecer
       try {
         const alertBtn = await page.$('ion-alert button');
         if (alertBtn) await alertBtn.click();
-        await page.waitForTimeout(500);
+        await page.waitForTimeout(300);
       } catch {}
 
       // Clica no centro para mostrar a toolbar
       await page.mouse.click(400, 300);
-      await page.waitForTimeout(1000);
+      await page.waitForTimeout(500);
 
       // Extrai progresso de leitura do footer
       const progress = await page.evaluate(() => {
@@ -246,19 +256,12 @@ async function scrapeAll() {
         const btn = document.querySelector('[data-testid="top_menu_notebook"]');
         if (btn) btn.click();
       });
-      await page.waitForTimeout(3000);
-
-      // Debug: dump HTML dos primeiros wrappers para diagnosticar notas
-      const debugDump = await page.evaluate(() => {
-        const wrappers = document.querySelectorAll('.notebook-editable-item-wrapper');
-        const dump = [];
-        for (let i = 0; i < Math.min(3, wrappers.length); i++) {
-          dump.push(wrappers[i].innerHTML.substring(0, 500));
-        }
-        return dump;
-      });
-      console.log(`  Debug wrappers (${debugDump.length}):`);
-      debugDump.forEach((d, i) => console.log(`    [${i}] ${d.substring(0, 200)}`));
+      // Espera o painel de notebook carregar
+      try {
+        await page.waitForSelector('.notebook-chapter, .notebook-editable-item-wrapper', { timeout: 5000 });
+      } catch {
+        await page.waitForTimeout(1500);
+      }
 
       // Extrai highlights do painel de annotations
       const highlights = await page.evaluate(() => {
