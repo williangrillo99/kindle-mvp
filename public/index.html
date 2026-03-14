@@ -1718,7 +1718,7 @@
         // Abre nova aba para login na Amazon
         if (loginData.status === 'waiting_manual_login') {
           if (status) status.innerHTML = '<span class="spinner"></span> Aba de login aberta. Faca login na Amazon e volte aqui...';
-          const loginWindow = window.open(`${API_URL}/amazon-login.html?token=${encodeURIComponent(token)}`, '_blank');
+          const loginWindow = window.open(`${API_URL}/amazon-login.html?token=${encodeURIComponent(localStorage.getItem('token'))}`, '_blank');
           // Escuta mensagem da aba de login quando completar
           window.addEventListener('message', async function onMsg(ev) {
             if (ev.data === 'amazon_login_done') {
