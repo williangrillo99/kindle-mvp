@@ -128,6 +128,52 @@ app.post('/api/login/check', authMiddleware, async (req, res) => {
   }
 });
 
+// Importa cookies do browser do usuário para criar sessão
+app.post('/api/login/cookies', authMiddleware, async (req, res) => {
+  try {
+    const { cookies: cookieStr } = req.body;
+    if (!cookieStr) return res.status(400).json({ error: 'Cookies não fornecidos' });
+
+    // Converte string de cookies para formato storageState
+    const cookiePairs = cookieStr.split(';').map(c => c.trim()).filter(Boolean);
+    const cookies = cookiePairs.map(pair => {
+      const [name, ...rest] = pair.split('=');
+      return {
+        name: name.trim(),
+        value: rest.join('='),
+        domain: '.amazon.com.br',
+        path: '/',
+        httpOnly: false,
+        secure: true,
+        sameSite: 'None',
+      };
+    });
+
+    const sessionData = { cookies, origins: [] };
+    stmts.upsertAmazonSession.run(
+      uuidv4(), req.userId,
+      JSON.stringify(sessionData),
+      '',
+    );
+
+    // Tenta usar esses cookies no Playwright pra validar e completar a sessão
+    const session = stmts.getAmazonSession.get(req.userId);
+    const result = await openLogin(req.userId, session.session_data);
+
+    if (result.status === 'logged_in' && result.sessionState) {
+      stmts.upsertAmazonSession.run(
+        uuidv4(), req.userId,
+        JSON.stringify(result.sessionState),
+        result.adpToken || '',
+      );
+    }
+
+    res.json({ status: result.status === 'logged_in' ? 'ok' : result.status });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Screenshot do browser remoto (para login interativo)
 app.get('/api/login/screenshot', authMiddleware, async (req, res) => {
   try {

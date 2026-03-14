@@ -1715,28 +1715,48 @@
           return;
         }
 
-        // Abre nova aba para login na Amazon
+        // Abre a pagina real da Amazon para login
         if (loginData.status === 'waiting_manual_login') {
-          if (status) status.innerHTML = '<span class="spinner"></span> Aba de login aberta. Faca login na Amazon e volte aqui...';
-          const loginWindow = window.open(`${API_URL}/amazon-login.html?token=${encodeURIComponent(localStorage.getItem('token'))}`, '_blank');
-          // Escuta mensagem da aba de login quando completar
-          window.addEventListener('message', async function onMsg(ev) {
-            if (ev.data === 'amazon_login_done') {
-              window.removeEventListener('message', onMsg);
+          window.open('https://www.amazon.com.br/ap/signin?openid.pape.max_auth_age=1209600&openid.return_to=https%3A%2F%2Fler.amazon.com.br%2Fkindle-library&openid.identity=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select&openid.assoc_handle=amzn_kindle_mykindle_br&openid.mode=checkid_setup&language=pt_BR&openid.claimed_id=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select&pageId=amzn_kindle_mykindle_br&openid.ns=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0', '_blank');
+          if (status) status.innerHTML = '';
+          // Mostra instrucoes e botao para importar cookies
+          const container = document.querySelector('.login-screen');
+          const instructions = document.createElement('div');
+          instructions.style.cssText = 'margin-top:20px;text-align:center;';
+          instructions.innerHTML = `
+            <p style="color:var(--text-secondary);font-size:14px;margin-bottom:16px;">
+              1. Faca login na Amazon na aba que abriu<br>
+              2. Depois de logado, copie os cookies abaixo<br>
+              3. Cole aqui e clique "Importar"
+            </p>
+            <p style="color:var(--text-muted);font-size:12px;margin-bottom:8px;">
+              Na aba da Amazon, abra o console (F12 > Console) e cole:<br>
+              <code style="background:var(--bg-secondary);padding:2px 6px;border-radius:4px;font-size:11px;user-select:all;">copy(document.cookie)</code>
+            </p>
+            <textarea id="cookie-input" placeholder="Cole os cookies aqui..." rows="3"
+              style="width:100%;max-width:500px;padding:10px;background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border);border-radius:6px;font-size:13px;resize:vertical;"></textarea>
+            <br>
+            <button class="btn-connect" id="btn-import-cookies" style="margin-top:10px;">Importar e Sincronizar</button>
+          `;
+          container.appendChild(instructions);
+          document.getElementById('btn-import-cookies').addEventListener('click', async () => {
+            const cookieStr = document.getElementById('cookie-input').value.trim();
+            if (!cookieStr) { if (status) status.textContent = 'Cole os cookies primeiro.'; return; }
+            if (status) status.innerHTML = '<span class="spinner"></span> Importando sessao...';
+            try {
+              const importRes = await apiFetch(`${API_URL}/api/login/cookies`, {
+                method: 'POST',
+                body: JSON.stringify({ cookies: cookieStr }),
+              });
+              const importData = await importRes.json();
+              if (importData.error) throw new Error(importData.error);
+              instructions.remove();
               await doSync(status, btn);
+            } catch (importErr) {
+              if (status) status.textContent = 'Erro: ' + importErr.message;
             }
           });
-          // Fallback: poll caso a aba feche sem postMessage
-          const pollCheck = setInterval(async () => {
-            try {
-              const checkRes = await apiFetch(`${API_URL}/api/login/check`, { method: 'POST' });
-              const checkData = await checkRes.json();
-              if (checkData.status === 'logged_in') {
-                clearInterval(pollCheck);
-                await doSync(status, btn);
-              }
-            } catch {}
-          }, 5000);
+          if (btn) btn.disabled = false;
           return;
         }
       } catch (err) {
