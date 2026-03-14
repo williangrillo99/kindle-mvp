@@ -1222,9 +1222,10 @@
           <h1>Kindle<span>Sync</span></h1>
           <p>Ola, ${escapeHtml(currentUser.name || currentUser.email)}! Conecte sua conta Amazon para importar seus livros e destaques.</p>
           <form class="auth-form" id="amazon-form">
-            <input type="email" name="amazonEmail" placeholder="Email da Amazon" autocomplete="email" required>
-            <input type="password" name="amazonPassword" placeholder="Senha da Amazon" autocomplete="current-password" required>
+            <input type="email" name="amazonEmail" placeholder="Email da Amazon" autocomplete="email">
+            <input type="password" name="amazonPassword" placeholder="Senha da Amazon" autocomplete="current-password">
             <button type="submit" class="btn-connect" id="btn-login">Sincronizar com Amazon Kindle</button>
+            <p style="color:var(--text-muted);font-size:12px;margin-top:8px;text-align:center;">Rodando localmente? Deixe os campos vazios para abrir o site da Amazon e digitar direto nele.</p>
           </form>
           <div class="status-text" id="status"></div>
           <div id="otp-container" style="display:none;margin-top:16px;">
@@ -1756,6 +1757,25 @@
               }
             });
           }
+          if (btn) btn.disabled = false;
+          return;
+        }
+
+        // Modo interativo: browser aberto, aguarda login manual
+        if (loginData.status === 'waiting_manual_login') {
+          if (status) status.innerHTML = '<span class="spinner"></span> Janela do browser aberta! Faca login na Amazon e volte aqui. Verificando...';
+          if (form) form.style.display = 'none';
+          // Poll a cada 5s pra ver se o usuário completou o login
+          const checkInterval = setInterval(async () => {
+            try {
+              const checkRes = await apiFetch(`${API_URL}/api/login/check`, { method: 'POST' });
+              const checkData = await checkRes.json();
+              if (checkData.status === 'logged_in') {
+                clearInterval(checkInterval);
+                await doSync(status, btn);
+              }
+            } catch {}
+          }, 5000);
           if (btn) btn.disabled = false;
           return;
         }

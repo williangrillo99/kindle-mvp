@@ -3,7 +3,7 @@ const cors = require('cors');
 const path = require('path');
 const crypto = require('crypto');
 const uuidv4 = () => crypto.randomUUID();
-const { openLogin, submitOTP, scrapeAll, closeBrowser, editNote, getSyncProgress } = require('./scraper');
+const { openLogin, submitOTP, checkManualLogin, scrapeAll, closeBrowser, editNote, getSyncProgress } = require('./scraper');
 const { stmts } = require('./db');
 const { hashPassword, comparePassword, generateToken, authMiddleware } = require('./auth');
 
@@ -94,6 +94,25 @@ app.post('/api/login/otp', authMiddleware, async (req, res) => {
     if (!otpCode) return res.status(400).json({ error: 'Código é obrigatório' });
 
     const result = await submitOTP(req.userId, otpCode);
+
+    if (result.status === 'logged_in' && result.sessionState) {
+      stmts.upsertAmazonSession.run(
+        uuidv4(), req.userId,
+        JSON.stringify(result.sessionState),
+        result.adpToken || '',
+      );
+    }
+
+    res.json({ status: result.status });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Verifica se login manual foi completado (modo interativo)
+app.post('/api/login/check', authMiddleware, async (req, res) => {
+  try {
+    const result = await checkManualLogin(req.userId);
 
     if (result.status === 'logged_in' && result.sessionState) {
       stmts.upsertAmazonSession.run(

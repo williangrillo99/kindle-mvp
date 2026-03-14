@@ -3,6 +3,10 @@ const { chromium } = require('playwright');
 const CLOUD_READER_URL = 'https://ler.amazon.com.br';
 const LOGIN_URL = 'https://www.amazon.com.br/ap/signin?openid.pape.max_auth_age=1209600&openid.return_to=https%3A%2F%2Fler.amazon.com.br%2Fkindle-library&openid.identity=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select&openid.assoc_handle=amzn_kindle_mykindle_br&openid.mode=checkid_setup&language=pt_BR&openid.claimed_id=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select&pageId=amzn_kindle_mykindle_br&openid.ns=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0';
 
+// HEADLESS=false → abre browser visível (modo local/interativo)
+// HEADLESS=true ou não definido → headless (modo VPS/automático)
+const IS_HEADLESS = process.env.HEADLESS !== 'false';
+
 // Instâncias por usuário: Map<userId, { browser, context, page, syncProgress, adpToken }>
 const userSessions = new Map();
 
@@ -20,7 +24,7 @@ async function openLogin(userId, savedSessionData, amazonEmail, amazonPassword) 
   if (s && s.browser) return { status: 'already_open' };
 
   const browser = await chromium.launch({
-    headless: true,
+    headless: IS_HEADLESS,
     args: [
       '--disable-blink-features=AutomationControlled',
       '--no-sandbox',
@@ -90,7 +94,13 @@ async function openLogin(userId, savedSessionData, amazonEmail, amazonPassword) 
     }
   }
 
-  // Login automático com email/senha
+  // Modo interativo: abre o browser e espera o usuário logar manualmente
+  if (!IS_HEADLESS && (!amazonEmail || !amazonPassword)) {
+    console.log(`[${userId}] Modo interativo: faça login na janela do browser...`);
+    return { status: 'waiting_manual_login' };
+  }
+
+  // Modo automático: login com email/senha
   if (!amazonEmail || !amazonPassword) {
     throw new Error('Credenciais Amazon necessárias para login.');
   }
@@ -598,6 +608,34 @@ async function editNote(asin, highlightIndex, newNote, highlightData, bookData, 
   return { status: 'ok', note: newNote };
 }
 
+// Verifica se o usuário completou login manual no browser interativo
+async function checkManualLogin(userId) {
+  const s = getSession(userId);
+  if (!s || !s.page) throw new Error('Browser não iniciado');
+
+  const { page, context } = s;
+
+  try {
+    // Navega para a biblioteca pra verificar se logou
+    await page.goto(`${CLOUD_READER_URL}/kindle-library`, {
+      waitUntil: 'domcontentloaded',
+      timeout: 15000,
+    });
+    await page.waitForTimeout(2000);
+
+    const url = page.url();
+    if (url.includes('/kindle-library') && !url.includes('signin') && !url.includes('/ap/')) {
+      console.log(`[${userId}] Login manual completado!`);
+      const sessionState = await context.storageState();
+      return { status: 'logged_in', sessionState, adpToken: s.adpToken };
+    }
+
+    return { status: 'waiting_manual_login' };
+  } catch {
+    return { status: 'waiting_manual_login' };
+  }
+}
+
 async function closeBrowser(userId) {
   const s = getSession(userId);
   if (s && s.browser) {
@@ -613,4 +651,4 @@ async function isBrowserOpen(userId) {
   return s !== null && s.browser !== null && s.page !== null;
 }
 
-module.exports = { openLogin, submitOTP, scrapeAll, closeBrowser, editNote, isBrowserOpen, getSyncProgress };
+module.exports = { openLogin, submitOTP, checkManualLogin, scrapeAll, closeBrowser, editNote, isBrowserOpen, getSyncProgress };
