@@ -1218,9 +1218,6 @@
     }
 
     function renderAmazonConnect() {
-      const token = localStorage.getItem('token');
-      const serverUrl = API_URL || window.location.origin;
-      const bookmarkletCode = "javascript:void(window.location='" + serverUrl + "/api/capture-cookies?cookies='+encodeURIComponent(document.cookie)+'&token=" + token + "')";
       app.innerHTML = `
         <div class="login-screen">
           <h1>Kindle<span>Sync</span></h1>
@@ -1233,13 +1230,9 @@
             <div style="font-size:12px;color:var(--text-muted);line-height:1.8;">
               1. Clique no botao abaixo para abrir o navegador da Amazon<br>
               2. Faca login normalmente na janela real que abrir<br>
-              3. Se necessario, clique em <strong style="color:var(--accent);">Capturar Kindle</strong> nos favoritos<br>
-              4. A sincronizacao inicia automaticamente
+              3. Apos autenticar, a sessao e detectada automaticamente<br>
+              4. Seus livros comecam a sincronizar
             </div>
-            <div style="text-align:center;margin-top:14px;">
-              <a href="${bookmarkletCode}" onclick="event.preventDefault();alert('Arraste este botao para sua barra de favoritos!')" style="display:inline-block;padding:8px 20px;background:var(--accent);color:white;border-radius:8px;text-decoration:none;font-weight:600;font-size:13px;cursor:grab;">Capturar Kindle</a>
-            </div>
-            <div style="font-size:11px;color:var(--text-muted);text-align:center;margin-top:8px;">Arraste para os favoritos (uso no login via navegador externo)</div>
           </div>
 
           <button class="btn-connect" id="btn-login" style="margin-top:16px;">Abrir Amazon e Sincronizar</button>
@@ -1756,9 +1749,17 @@
         // Ambiente sem display (ex.: VPS): usa viewer remoto
         if (loginData.status === 'waiting_manual_login_remote') {
           if (status) {
-            status.innerHTML = '<span class="spinner"></span> Ambiente sem interface grafica. A Amazon abriu em outra aba. Faca login e depois clique no favorito "Capturar Kindle".';
+            status.innerHTML = '<span class="spinner"></span> Ambiente sem interface grafica. A Amazon abriu em outra aba. Faca login e aguarde a deteccao automatica da sessao.';
           }
           window.open(AMAZON_LOGIN_URL, '_blank');
+          const onAmazonDone = async (ev) => {
+            if (ev.data !== 'amazon_login_done') return;
+            window.removeEventListener('message', onAmazonDone);
+            if (status) status.innerHTML = '<span class="spinner"></span> Sessao capturada. Iniciando sincronizacao...';
+            await doSync(status, btn);
+          };
+          window.addEventListener('message', onAmazonDone);
+
           let waitCycles = 0;
           const pollCheck = setInterval(async () => {
             try {
@@ -1770,11 +1771,21 @@
                 const retryData = await loginRetry.json();
                 if (retryData.status === 'logged_in') {
                   clearInterval(pollCheck);
+                  window.removeEventListener('message', onAmazonDone);
                   if (status) status.innerHTML = '<span class="spinner"></span> Sessao capturada. Iniciando sincronizacao...';
                   await doSync(status, btn);
                 }
               } else if (status && waitCycles % 3 === 0) {
-                status.innerHTML = '<span class="spinner"></span> Aguardando captura da sessao... apos logar na Amazon, clique em "Capturar Kindle" nos favoritos.';
+                status.innerHTML = '<span class="spinner"></span> Aguardando captura da sessao... se demorar, verifique se a extensao KindleSync esta ativa no navegador.';
+              }
+
+              if (waitCycles >= 24) {
+                clearInterval(pollCheck);
+                window.removeEventListener('message', onAmazonDone);
+                if (status) {
+                  status.textContent = 'Nao foi possivel detectar a sessao automaticamente. Verifique a extensao KindleSync e tente novamente.';
+                }
+                if (btn) btn.disabled = false;
               }
             } catch {}
           }, 5000);
