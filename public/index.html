@@ -1148,15 +1148,6 @@
   <script>
     // Mesmo servidor serve frontend e backend
     const API_URL = '';
-    const AMAZON_LOGIN_URL = 'https://www.amazon.com.br/ap/signin?openid.pape.max_auth_age=1209600&openid.return_to=https%3A%2F%2Fler.amazon.com.br%2Fkindle-library&openid.identity=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select&openid.assoc_handle=amzn_kindle_mykindle_br&openid.mode=checkid_setup&language=pt_BR&openid.claimed_id=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select&pageId=amzn_kindle_mykindle_br&openid.ns=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0';
-    function buildAmazonLoginUrl(token) {
-      const serverUrl = window.location.origin;
-      const returnTo = `https://ler.amazon.com.br/kindle-library?ks_server=${encodeURIComponent(serverUrl)}&ks_token=${encodeURIComponent(token || '')}`;
-      return AMAZON_LOGIN_URL.replace(
-        /openid\.return_to=[^&]+/,
-        `openid.return_to=${encodeURIComponent(returnTo)}`
-      );
-    }
 
     const app = document.getElementById('app');
     let books = [];
@@ -1760,8 +1751,8 @@
           const showRemoteLoginHelp = () => {
             if (!status) return;
             status.innerHTML = `
-              Nao foi possivel detectar a sessao automaticamente.<br>
-              Confirme que a extensao KindleSync esta ativa no navegador onde voce fez login na Amazon.<br>
+              Nao foi possivel concluir o login remoto no Playwright.<br>
+              Tente novamente e finalize o login na janela remota aberta pelo KindleSync.<br>
               <button id="retry-remote-login" style="margin-top:8px;background:var(--accent);color:white;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;">Tentar novamente</button>
             `;
             const retryBtn = document.getElementById('retry-remote-login');
@@ -1774,47 +1765,33 @@
           };
 
           if (status) {
-            status.innerHTML = '<span class="spinner"></span> Ambiente sem interface grafica. A Amazon abriu em outra aba. Faca login e aguarde a deteccao automatica da sessao.';
+            status.innerHTML = '<span class="spinner"></span> Ambiente sem interface grafica. Abrindo login remoto do Playwright...';
           }
           const token = localStorage.getItem('token');
-          window.open(buildAmazonLoginUrl(token), '_blank');
-          const onAmazonDone = async (ev) => {
-            if (ev.data !== 'amazon_login_done') return;
-            window.removeEventListener('message', onAmazonDone);
-            if (status) status.innerHTML = '<span class="spinner"></span> Sessao capturada. Iniciando sincronizacao...';
-            await doSync(status, btn);
-          };
-          window.addEventListener('message', onAmazonDone);
+          window.open(`/amazon-login.html?token=${encodeURIComponent(token || '')}`, '_blank');
 
           let waitCycles = 0;
           const pollCheck = setInterval(async () => {
             try {
               waitCycles += 1;
-              const sessionRes = await apiFetch(`${API_URL}/api/amazon-session`);
-              const sessionData = await sessionRes.json();
-              if (sessionData.hasSession) {
-                const loginRetry = await apiFetch(`${API_URL}/api/login`, { method: 'POST', body: JSON.stringify({}) });
-                const retryData = await loginRetry.json();
-                if (retryData.status === 'logged_in') {
-                  clearInterval(pollCheck);
-                  window.removeEventListener('message', onAmazonDone);
-                  if (status) status.innerHTML = '<span class="spinner"></span> Sessao capturada. Iniciando sincronizacao...';
-                  await doSync(status, btn);
-                }
+              const checkRes = await apiFetch(`${API_URL}/api/login/check`, { method: 'POST' });
+              const checkData = await checkRes.json();
+              if (checkData.status === 'logged_in') {
+                clearInterval(pollCheck);
+                if (status) status.innerHTML = '<span class="spinner"></span> Login confirmado. Iniciando sincronizacao...';
+                await doSync(status, btn);
               } else if (status && waitCycles % 3 === 0) {
-                status.innerHTML = '<span class="spinner"></span> Aguardando captura da sessao... se demorar, verifique se a extensao KindleSync esta ativa no navegador.';
+                status.innerHTML = '<span class="spinner"></span> Aguardando voce concluir o login na janela remota do Playwright...';
               }
 
               if (waitCycles >= 24) {
                 clearInterval(pollCheck);
-                window.removeEventListener('message', onAmazonDone);
                 showRemoteLoginHelp();
                 if (btn) btn.disabled = false;
               }
             } catch {
               if (waitCycles >= 24) {
                 clearInterval(pollCheck);
-                window.removeEventListener('message', onAmazonDone);
                 showRemoteLoginHelp();
                 if (btn) btn.disabled = false;
               }
