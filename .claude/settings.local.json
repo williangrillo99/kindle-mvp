@@ -12,7 +12,17 @@
       "Bash(node -e \"require\\(''./backend/db''\\); require\\(''./backend/auth''\\); console.log\\(''OK''\\)\")",
       "Bash(timeout 3 node backend/server.js)",
       "Bash(node -e \":*)",
-      "Bash(git add .gitignore backend/db.js backend/auth.js backend/server.js backend/scraper.js backend/package.json backend/package-lock.json public/index.html)"
+      "Bash(git add .gitignore backend/db.js backend/auth.js backend/server.js backend/scraper.js backend/package.json backend/package-lock.json public/index.html)",
+      "Bash(git add backend/server.js backend/package.json)",
+      "Bash(git push origin master)",
+      "Bash(git add backend/server.js)",
+      "Bash(git add backend/scraper.js backend/server.js public/index.html)",
+      "Bash(node -e \"require\\(''./backend/scraper.js''\\); console.log\\(''OK''\\)\")",
+      "Bash(git add public/index.html public/amazon-login.html)",
+      "Bash(git add public/index.html)",
+      "Bash(git add public/index.html backend/server.js)",
+      "Bash(git add extension/ public/index.html)",
+      "Bash(git add backend/server.js public/index.html)"
     ]
   }
 }
