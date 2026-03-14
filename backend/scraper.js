@@ -95,7 +95,7 @@ async function openLogin(userId, savedSessionData, amazonEmail, amazonPassword) 
   }
 
   // Modo interativo: abre o browser e espera o usuário logar manualmente
-  if (!IS_HEADLESS && (!amazonEmail || !amazonPassword)) {
+  if (!amazonEmail || !amazonPassword) {
     console.log(`[${userId}] Modo interativo: faça login na janela do browser...`);
     return { status: 'waiting_manual_login' };
   }
@@ -608,6 +608,33 @@ async function editNote(asin, highlightIndex, newNote, highlightData, bookData, 
   return { status: 'ok', note: newNote };
 }
 
+// Captura screenshot da página atual do browser
+async function getScreenshot(userId) {
+  const s = getSession(userId);
+  if (!s || !s.page) throw new Error('Browser não iniciado');
+  const screenshot = await s.page.screenshot({ type: 'jpeg', quality: 70 });
+  return screenshot;
+}
+
+// Envia interação do usuário para o browser (click, type, keypress)
+async function sendInteraction(userId, action) {
+  const s = getSession(userId);
+  if (!s || !s.page) throw new Error('Browser não iniciado');
+
+  const { page } = s;
+
+  if (action.type === 'click') {
+    await page.mouse.click(action.x, action.y);
+  } else if (action.type === 'type') {
+    await page.keyboard.type(action.text);
+  } else if (action.type === 'key') {
+    await page.keyboard.press(action.key);
+  }
+
+  // Pequeno delay pra dar tempo da página reagir
+  await page.waitForTimeout(300);
+}
+
 // Verifica se o usuário completou login manual no browser interativo
 async function checkManualLogin(userId) {
   const s = getSession(userId);
@@ -651,4 +678,4 @@ async function isBrowserOpen(userId) {
   return s !== null && s.browser !== null && s.page !== null;
 }
 
-module.exports = { openLogin, submitOTP, checkManualLogin, scrapeAll, closeBrowser, editNote, isBrowserOpen, getSyncProgress };
+module.exports = { openLogin, submitOTP, checkManualLogin, getScreenshot, sendInteraction, scrapeAll, closeBrowser, editNote, isBrowserOpen, getSyncProgress };

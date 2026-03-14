@@ -3,7 +3,7 @@ const cors = require('cors');
 const path = require('path');
 const crypto = require('crypto');
 const uuidv4 = () => crypto.randomUUID();
-const { openLogin, submitOTP, checkManualLogin, scrapeAll, closeBrowser, editNote, getSyncProgress } = require('./scraper');
+const { openLogin, submitOTP, checkManualLogin, getScreenshot, sendInteraction, scrapeAll, closeBrowser, editNote, getSyncProgress } = require('./scraper');
 const { stmts } = require('./db');
 const { hashPassword, comparePassword, generateToken, authMiddleware } = require('./auth');
 
@@ -123,6 +123,27 @@ app.post('/api/login/check', authMiddleware, async (req, res) => {
     }
 
     res.json({ status: result.status });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Screenshot do browser remoto (para login interativo)
+app.get('/api/login/screenshot', authMiddleware, async (req, res) => {
+  try {
+    const screenshot = await getScreenshot(req.userId);
+    res.set('Content-Type', 'image/jpeg');
+    res.send(screenshot);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Envia interação para o browser remoto (click, type, key)
+app.post('/api/login/interact', authMiddleware, async (req, res) => {
+  try {
+    await sendInteraction(req.userId, req.body);
+    res.json({ status: 'ok' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

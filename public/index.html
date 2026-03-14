@@ -1761,22 +1761,10 @@
           return;
         }
 
-        // Modo interativo: browser aberto, aguarda login manual
+        // Modo interativo: mostra browser remoto para login na Amazon
         if (loginData.status === 'waiting_manual_login') {
-          if (status) status.innerHTML = '<span class="spinner"></span> Janela do browser aberta! Faca login na Amazon e volte aqui. Verificando...';
           if (form) form.style.display = 'none';
-          // Poll a cada 5s pra ver se o usuário completou o login
-          const checkInterval = setInterval(async () => {
-            try {
-              const checkRes = await apiFetch(`${API_URL}/api/login/check`, { method: 'POST' });
-              const checkData = await checkRes.json();
-              if (checkData.status === 'logged_in') {
-                clearInterval(checkInterval);
-                await doSync(status, btn);
-              }
-            } catch {}
-          }, 5000);
-          if (btn) btn.disabled = false;
+          showRemoteBrowser(status, btn);
           return;
         }
 
@@ -1788,6 +1776,106 @@
         if (status) status.textContent = 'Erro: ' + err.message;
         if (btn) btn.disabled = false;
       }
+    }
+
+    function showRemoteBrowser(status, btn) {
+      const container = document.querySelector('.login-screen');
+      if (!container) return;
+
+      // Cria viewer do browser remoto
+      const viewer = document.createElement('div');
+      viewer.id = 'remote-browser';
+      viewer.innerHTML = `
+        <p style="color:var(--text-secondary);font-size:14px;margin-bottom:8px;">Faca login na Amazon abaixo. Clique e digite normalmente:</p>
+        <div style="position:relative;display:inline-block;cursor:crosshair;border:1px solid var(--border);border-radius:8px;overflow:hidden;">
+          <img id="rb-screen" style="display:block;max-width:100%;width:800px;" alt="Carregando...">
+        </div>
+        <div style="margin-top:8px;">
+          <input type="text" id="rb-keyboard" placeholder="Clique aqui e digite..."
+            style="width:100%;max-width:800px;padding:10px;background:var(--bg-secondary);color:var(--text-primary);border:1px solid var(--border);border-radius:6px;font-size:14px;"
+            autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+        </div>
+        <p style="color:var(--text-muted);font-size:11px;margin-top:6px;">Dica: Clique na imagem para interagir com a pagina. Use o campo de texto para digitar.</p>
+      `;
+      container.appendChild(viewer);
+      if (status) status.innerHTML = '';
+
+      const screen = document.getElementById('rb-screen');
+      const keyboard = document.getElementById('rb-keyboard');
+      let screenshotInterval = null;
+
+      // Atualiza screenshot a cada 1s
+      async function refreshScreen() {
+        try {
+          const res = await fetch(`${API_URL}/api/login/screenshot`, {
+            headers: { 'Authorization': 'Bearer ' + token },
+          });
+          if (res.ok) {
+            const blob = await res.blob();
+            screen.src = URL.createObjectURL(blob);
+          }
+        } catch {}
+      }
+      refreshScreen();
+      screenshotInterval = setInterval(refreshScreen, 1000);
+
+      // Clique na imagem → envia click pro browser
+      screen.addEventListener('click', async (e) => {
+        const rect = screen.getBoundingClientRect();
+        const scaleX = screen.naturalWidth / rect.width;
+        const scaleY = screen.naturalHeight / rect.height;
+        const x = Math.round((e.clientX - rect.left) * scaleX);
+        const y = Math.round((e.clientY - rect.top) * scaleY);
+        await apiFetch(`${API_URL}/api/login/interact`, {
+          method: 'POST',
+          body: JSON.stringify({ type: 'click', x, y }),
+        });
+        setTimeout(refreshScreen, 500);
+        keyboard.focus();
+      });
+
+      // Digitação → envia pro browser
+      let typeTimeout = null;
+      keyboard.addEventListener('input', (e) => {
+        const text = keyboard.value;
+        if (!text) return;
+        clearTimeout(typeTimeout);
+        typeTimeout = setTimeout(async () => {
+          keyboard.value = '';
+          await apiFetch(`${API_URL}/api/login/interact`, {
+            method: 'POST',
+            body: JSON.stringify({ type: 'type', text }),
+          });
+          setTimeout(refreshScreen, 500);
+        }, 150);
+      });
+
+      // Teclas especiais (Enter, Tab, Backspace)
+      keyboard.addEventListener('keydown', async (e) => {
+        const specialKeys = ['Enter', 'Tab', 'Backspace', 'Escape', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'];
+        if (specialKeys.includes(e.key)) {
+          e.preventDefault();
+          await apiFetch(`${API_URL}/api/login/interact`, {
+            method: 'POST',
+            body: JSON.stringify({ type: 'key', key: e.key }),
+          });
+          setTimeout(refreshScreen, 500);
+        }
+      });
+
+      // Poll a cada 5s pra ver se logou
+      const checkInterval = setInterval(async () => {
+        try {
+          const checkRes = await apiFetch(`${API_URL}/api/login/check`, { method: 'POST' });
+          const checkData = await checkRes.json();
+          if (checkData.status === 'logged_in') {
+            clearInterval(checkInterval);
+            clearInterval(screenshotInterval);
+            viewer.remove();
+            await doSync(status, btn);
+          }
+        } catch {}
+      }, 5000);
     }
 
     async function doSync(status, btn) {
