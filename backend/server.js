@@ -12,9 +12,63 @@ const PORT = process.env.PORT || 3001;
 
 app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 // Serve frontend estático
 app.use(express.static(path.join(__dirname, '..', 'public')));
+
+// ========== CAPTURA DE COOKIES VIA BOOKMARKLET ==========
+// Recebe cookies da Amazon via GET (bookmarklet redireciona pra cá)
+app.get('/api/capture-cookies', async (req, res) => {
+  const { cookies: cookieStr, token } = req.query;
+  if (!cookieStr || !token) {
+    return res.status(400).send('<h2>Erro: parâmetros ausentes</h2>');
+  }
+
+  // Valida token JWT
+  let userId;
+  try {
+    const jwt = require('jsonwebtoken');
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'kindle-mvp-secret-key-change-in-production');
+    userId = decoded.userId;
+  } catch {
+    return res.status(401).send('<h2>Erro: token inválido ou expirado</h2>');
+  }
+
+  // Converte cookies para storageState
+  const cookiePairs = cookieStr.split(';').map(c => c.trim()).filter(Boolean);
+  const cookies = cookiePairs.map(pair => {
+    const [name, ...rest] = pair.split('=');
+    return {
+      name: name.trim(),
+      value: rest.join('='),
+      domain: '.amazon.com.br',
+      path: '/',
+      httpOnly: false,
+      secure: true,
+      sameSite: 'None',
+    };
+  });
+
+  const sessionData = { cookies, origins: [] };
+  stmts.upsertAmazonSession.run(
+    uuidv4(), userId,
+    JSON.stringify(sessionData),
+    '',
+  );
+
+  // Retorna página de sucesso que fecha a aba
+  res.send(`<!DOCTYPE html>
+<html><head><title>KindleSync</title>
+<style>body{background:#0d1117;color:#3fb950;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;font-size:20px;font-weight:bold;}</style>
+</head><body>
+<div>Cookies capturados com sucesso! Fechando...</div>
+<script>
+  if (window.opener) window.opener.postMessage('amazon_login_done', '*');
+  setTimeout(() => window.close(), 2000);
+</script>
+</body></html>`);
+});
 
 // ========== AUTH ROUTES (públicas) ==========
 
