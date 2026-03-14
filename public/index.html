@@ -1755,10 +1755,14 @@
 
         // Ambiente sem display (ex.: VPS): usa viewer remoto
         if (loginData.status === 'waiting_manual_login_remote') {
-          if (status) status.innerHTML = '<span class="spinner"></span> Ambiente sem interface grafica. Abrindo pagina real da Amazon...';
+          if (status) {
+            status.innerHTML = '<span class="spinner"></span> Ambiente sem interface grafica. A Amazon abriu em outra aba. Faca login e depois clique no favorito "Capturar Kindle".';
+          }
           window.open(AMAZON_LOGIN_URL, '_blank');
+          let waitCycles = 0;
           const pollCheck = setInterval(async () => {
             try {
+              waitCycles += 1;
               const sessionRes = await apiFetch(`${API_URL}/api/amazon-session`);
               const sessionData = await sessionRes.json();
               if (sessionData.hasSession) {
@@ -1766,8 +1770,11 @@
                 const retryData = await loginRetry.json();
                 if (retryData.status === 'logged_in') {
                   clearInterval(pollCheck);
+                  if (status) status.innerHTML = '<span class="spinner"></span> Sessao capturada. Iniciando sincronizacao...';
                   await doSync(status, btn);
                 }
+              } else if (status && waitCycles % 3 === 0) {
+                status.innerHTML = '<span class="spinner"></span> Aguardando captura da sessao... apos logar na Amazon, clique em "Capturar Kindle" nos favoritos.';
               }
             } catch {}
           }, 5000);
