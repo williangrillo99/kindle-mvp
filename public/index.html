@@ -1148,6 +1148,7 @@
   <script>
     // Mesmo servidor serve frontend e backend
     const API_URL = '';
+    const AMAZON_LOGIN_URL = 'https://www.amazon.com.br/ap/signin?openid.pape.max_auth_age=1209600&openid.return_to=https%3A%2F%2Fler.amazon.com.br%2Fkindle-library&openid.identity=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select&openid.assoc_handle=amzn_kindle_mykindle_br&openid.mode=checkid_setup&language=pt_BR&openid.claimed_id=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select&pageId=amzn_kindle_mykindle_br&openid.ns=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0';
 
     const app = document.getElementById('app');
     let books = [];
@@ -1217,6 +1218,9 @@
     }
 
     function renderAmazonConnect() {
+      const token = localStorage.getItem('token');
+      const serverUrl = API_URL || window.location.origin;
+      const bookmarkletCode = "javascript:void(window.location='" + serverUrl + "/api/capture-cookies?cookies='+encodeURIComponent(document.cookie)+'&token=" + token + "')";
       app.innerHTML = `
         <div class="login-screen">
           <h1>Kindle<span>Sync</span></h1>
@@ -1229,9 +1233,13 @@
             <div style="font-size:12px;color:var(--text-muted);line-height:1.8;">
               1. Clique no botao abaixo para abrir o navegador da Amazon<br>
               2. Faca login normalmente na janela real que abrir<br>
-              3. Aguarde o KindleSync detectar o login automaticamente<br>
-              4. A sincronizacao inicia sem bookmarklet
+              3. Se necessario, clique em <strong style="color:var(--accent);">Capturar Kindle</strong> nos favoritos<br>
+              4. A sincronizacao inicia automaticamente
             </div>
+            <div style="text-align:center;margin-top:14px;">
+              <a href="${bookmarkletCode}" onclick="event.preventDefault();alert('Arraste este botao para sua barra de favoritos!')" style="display:inline-block;padding:8px 20px;background:var(--accent);color:white;border-radius:8px;text-decoration:none;font-weight:600;font-size:13px;cursor:grab;">Capturar Kindle</a>
+            </div>
+            <div style="font-size:11px;color:var(--text-muted);text-align:center;margin-top:8px;">Arraste para os favoritos (uso no login via navegador externo)</div>
           </div>
 
           <button class="btn-connect" id="btn-login" style="margin-top:16px;">Abrir Amazon e Sincronizar</button>
@@ -1747,15 +1755,19 @@
 
         // Ambiente sem display (ex.: VPS): usa viewer remoto
         if (loginData.status === 'waiting_manual_login_remote') {
-          if (status) status.innerHTML = '<span class="spinner"></span> Ambiente sem interface grafica. Abra a tela de login remoto...';
-          window.open(`/amazon-login.html?token=${encodeURIComponent(token || '')}`, '_blank');
+          if (status) status.innerHTML = '<span class="spinner"></span> Ambiente sem interface grafica. Abrindo pagina real da Amazon...';
+          window.open(AMAZON_LOGIN_URL, '_blank');
           const pollCheck = setInterval(async () => {
             try {
-              const checkRes = await apiFetch(`${API_URL}/api/login/check`, { method: 'POST' });
-              const checkData = await checkRes.json();
-              if (checkData.status === 'logged_in') {
-                clearInterval(pollCheck);
-                await doSync(status, btn);
+              const sessionRes = await apiFetch(`${API_URL}/api/amazon-session`);
+              const sessionData = await sessionRes.json();
+              if (sessionData.hasSession) {
+                const loginRetry = await apiFetch(`${API_URL}/api/login`, { method: 'POST', body: JSON.stringify({}) });
+                const retryData = await loginRetry.json();
+                if (retryData.status === 'logged_in') {
+                  clearInterval(pollCheck);
+                  await doSync(status, btn);
+                }
               }
             } catch {}
           }, 5000);
