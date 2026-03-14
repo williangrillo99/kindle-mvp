@@ -1170,6 +1170,7 @@
 
     function apiFetch(url, options = {}) {
       const token = localStorage.getItem('token');
+      options.cache = 'no-store';
       options.headers = {
         ...options.headers,
         'Content-Type': 'application/json',

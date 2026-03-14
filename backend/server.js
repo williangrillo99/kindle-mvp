@@ -341,6 +341,12 @@ app.put('/api/books/:bookIndex/highlights/:highlightIndex/note', authMiddleware,
 
 // Verifica se tem sessão Amazon salva
 app.get('/api/amazon-session', authMiddleware, (req, res) => {
+  res.set({
+    'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0',
+    'Surrogate-Control': 'no-store',
+  });
   const session = stmts.getAmazonSession.get(req.userId);
   res.json({ hasSession: !!session });
 });
