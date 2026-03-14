@@ -2,29 +2,65 @@
 // Envia cookies para o KindleSync automaticamente
 
 (async () => {
-  // Pega config do chrome.storage.local (setada na pagina de opcoes da extensao)
-  let serverUrl = '';
-  let token = '';
+  // 1) Tenta config via query params do retorno da Amazon
+  const params = new URLSearchParams(window.location.search);
+  let serverUrl = (params.get('ks_server') || '').trim().replace(/\/$/, '');
+  let token = (params.get('ks_token') || '').trim();
 
-  try {
-    const data = await chrome.storage.local.get(['serverUrl', 'token']);
-    serverUrl = data.serverUrl || '';
-    token = data.token || '';
-  } catch {}
-
+  // 2) Fallback: config salva no storage
   if (!serverUrl || !token) {
-    console.log('KindleSync: extensão não configurada. Abra as opções da extensão.');
+    try {
+      const data = await chrome.storage.local.get(['serverUrl', 'token']);
+      serverUrl = serverUrl || (data.serverUrl || '').trim().replace(/\/$/, '');
+      token = token || (data.token || '').trim();
+    } catch {}
+  }
+
+  // 3) Persiste config quando veio por query string
+  if (serverUrl && token) {
+    try {
+      await chrome.storage.local.set({ serverUrl, token });
+    } catch {}
+  }
+
+  // 4) Se ainda não tem config, não consegue enviar sessão
+  if (!serverUrl || !token) {
+    console.log('KindleSync: extensão sem configuração (server/token).');
     return;
   }
 
-  // Captura cookies
+  // 5) Pede para o background capturar cookies completos (inclui HttpOnly)
+  try {
+    const data = await chrome.runtime.sendMessage({
+      type: 'captureAndSend',
+      serverUrl,
+      token,
+      currentCookie: document.cookie || '',
+    });
+    if (data && data.status === 'ok') {
+      console.log('KindleSync: sessão enviada com sucesso!');
+
+      if (window.opener) {
+        window.opener.postMessage('amazon_login_done', '*');
+      }
+
+      const banner = document.createElement('div');
+      banner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#3fb950;color:#000;text-align:center;padding:12px;font-size:16px;font-weight:bold;z-index:99999;';
+      banner.textContent = 'KindleSync: Login capturado com sucesso! Pode fechar esta aba.';
+      document.body.appendChild(banner);
+      setTimeout(() => window.close(), 2000);
+      return;
+    }
+  } catch (err) {
+    console.warn('KindleSync: falha no captureAndSend, tentando fallback...', err);
+  }
+
+  // 6) Fallback legado (document.cookie)
   const cookies = document.cookie;
   if (!cookies) {
-    console.log('KindleSync: nenhum cookie encontrado.');
+    console.log('KindleSync: nenhum cookie encontrado no fallback.');
     return;
   }
-
-  console.log('KindleSync: enviando cookies para o servidor...');
 
   try {
     const res = await fetch(`${serverUrl}/api/login/cookies`, {
@@ -37,23 +73,13 @@
     });
     const data = await res.json();
     if (data.status === 'ok') {
-      console.log('KindleSync: cookies enviados com sucesso!');
-
-      // Avisa a janela do KindleSync (se foi aberta por ela)
       if (window.opener) {
         window.opener.postMessage('amazon_login_done', '*');
       }
-
-      // Mostra feedback visual
-      const banner = document.createElement('div');
-      banner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#3fb950;color:#000;text-align:center;padding:12px;font-size:16px;font-weight:bold;z-index:99999;';
-      banner.textContent = 'KindleSync: Login capturado com sucesso! Pode fechar esta aba.';
-      document.body.appendChild(banner);
-      setTimeout(() => window.close(), 3000);
     } else {
-      console.log('KindleSync: resposta do servidor:', data);
+      console.log('KindleSync: fallback retornou:', data);
     }
   } catch (err) {
-    console.error('KindleSync extension error:', err);
+    console.error('KindleSync extension fallback error:', err);
   }
 })();

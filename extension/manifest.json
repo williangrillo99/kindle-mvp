@@ -4,7 +4,12 @@
   "version": "1.0",
   "description": "Captura cookies da Amazon automaticamente para o KindleSync",
   "permissions": ["cookies", "storage"],
-  "host_permissions": ["*://*.amazon.com.br/*"],
+  "host_permissions": [
+    "*://*.amazon.com.br/*",
+    "http://68.183.110.111/*",
+    "http://localhost/*",
+    "http://localhost:3001/*"
+  ],
   "background": {
     "service_worker": "background.js"
   },

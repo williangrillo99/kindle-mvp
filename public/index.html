@@ -1149,6 +1149,14 @@
     // Mesmo servidor serve frontend e backend
     const API_URL = '';
     const AMAZON_LOGIN_URL = 'https://www.amazon.com.br/ap/signin?openid.pape.max_auth_age=1209600&openid.return_to=https%3A%2F%2Fler.amazon.com.br%2Fkindle-library&openid.identity=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select&openid.assoc_handle=amzn_kindle_mykindle_br&openid.mode=checkid_setup&language=pt_BR&openid.claimed_id=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select&pageId=amzn_kindle_mykindle_br&openid.ns=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0';
+    function buildAmazonLoginUrl(token) {
+      const serverUrl = window.location.origin;
+      const returnTo = `https://ler.amazon.com.br/kindle-library?ks_server=${encodeURIComponent(serverUrl)}&ks_token=${encodeURIComponent(token || '')}`;
+      return AMAZON_LOGIN_URL.replace(
+        /openid\.return_to=[^&]+/,
+        `openid.return_to=${encodeURIComponent(returnTo)}`
+      );
+    }
 
     const app = document.getElementById('app');
     let books = [];
@@ -1768,7 +1776,8 @@
           if (status) {
             status.innerHTML = '<span class="spinner"></span> Ambiente sem interface grafica. A Amazon abriu em outra aba. Faca login e aguarde a deteccao automatica da sessao.';
           }
-          window.open(AMAZON_LOGIN_URL, '_blank');
+          const token = localStorage.getItem('token');
+          window.open(buildAmazonLoginUrl(token), '_blank');
           const onAmazonDone = async (ev) => {
             if (ev.data !== 'amazon_login_done') return;
             window.removeEventListener('message', onAmazonDone);
