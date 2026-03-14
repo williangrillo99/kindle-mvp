@@ -15,16 +15,17 @@ function getSyncProgress(userId) {
   return s ? s.syncProgress : { current: 0, total: 0, bookTitle: '' };
 }
 
-async function openLogin(userId, savedSessionData) {
+async function openLogin(userId, savedSessionData, amazonEmail, amazonPassword) {
   let s = getSession(userId);
-  if (s && s.browser) return;
+  if (s && s.browser) return { status: 'already_open' };
 
   const browser = await chromium.launch({
-    headless: false,
+    headless: true,
     args: [
       '--disable-blink-features=AutomationControlled',
       '--no-sandbox',
       '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
     ],
   });
 
@@ -56,47 +57,153 @@ async function openLogin(userId, savedSessionData) {
   s = { browser, context, page, syncProgress: { current: 0, total: 0, bookTitle: '' }, adpToken: '' };
   userSessions.set(userId, s);
 
-  // Detecta quando o usuario fecha o browser
   browser.on('disconnected', () => {
-    console.log(`[${userId}] Browser fechado pelo usuario`);
+    console.log(`[${userId}] Browser desconectado`);
     userSessions.delete(userId);
   });
 
+  // Navega para login da Amazon
   await page.goto(LOGIN_URL, {
     waitUntil: 'domcontentloaded',
     timeout: 30000,
   });
 
-  return { status: 'login_opened' };
-}
-
-async function waitForLogin(userId, timeoutMs = 120000) {
-  const s = getSession(userId);
-  if (!s || !s.page || !s.browser) {
-    return { status: 'browser_closed' };
-  }
-
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    if (!s.page || !s.browser) {
-      return { status: 'browser_closed' };
-    }
-
+  // Se tem sessão salva, verifica se já está logado
+  if (savedSessionData) {
     try {
-      const url = s.page.url();
-      if (url.includes('ler.amazon') && url.includes('/kindle-library') && !url.includes('signin') && !url.includes('/ap/')) {
-        await s.page.waitForTimeout(2000);
-        // Retorna o estado da sessão pro server salvar no DB
-        const sessionState = await s.context.storageState();
+      await page.goto(`${CLOUD_READER_URL}/kindle-library`, {
+        waitUntil: 'domcontentloaded',
+        timeout: 15000,
+      });
+      const url = page.url();
+      if (url.includes('/kindle-library') && !url.includes('signin') && !url.includes('/ap/')) {
+        console.log(`[${userId}] Sessão restaurada com sucesso`);
+        const sessionState = await context.storageState();
         return { status: 'logged_in', sessionState, adpToken: s.adpToken };
       }
-      await s.page.waitForTimeout(1000);
+      // Sessão expirou, faz login com credenciais
+      console.log(`[${userId}] Sessão expirada, fazendo login...`);
+      await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
     } catch {
-      return { status: 'browser_closed' };
+      console.log(`[${userId}] Erro ao restaurar sessão, tentando login...`);
+      await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
     }
   }
 
-  throw new Error('Timeout esperando login');
+  // Login automático com email/senha
+  if (!amazonEmail || !amazonPassword) {
+    throw new Error('Credenciais Amazon necessárias para login.');
+  }
+
+  try {
+    // Preenche email
+    await page.waitForSelector('#ap_email', { timeout: 10000 });
+    await page.fill('#ap_email', amazonEmail);
+
+    // Alguns fluxos tem botão "Continuar" antes da senha
+    const continueBtn = await page.$('#continue');
+    if (continueBtn) {
+      await continueBtn.click();
+      await page.waitForTimeout(2000);
+    }
+
+    // Preenche senha
+    await page.waitForSelector('#ap_password', { timeout: 10000 });
+    await page.fill('#ap_password', amazonPassword);
+
+    // Clica em "Fazer login"
+    await page.click('#signInSubmit');
+    await page.waitForTimeout(3000);
+
+    // Verifica se precisa de captcha ou 2FA
+    const url = page.url();
+    if (url.includes('/ap/cvf') || url.includes('/ap/mfa')) {
+      // Precisa de código de verificação (2FA/OTP)
+      return { status: 'needs_otp' };
+    }
+
+    if (url.includes('/errors/validateCaptcha') || await page.$('#auth-captcha-image')) {
+      throw new Error('Amazon pediu captcha. Tente novamente em alguns minutos.');
+    }
+
+    // Verifica se login foi bem sucedido
+    if (url.includes('/ap/signin') || url.includes('/ap/')) {
+      const errorEl = await page.$('#auth-error-message-box, .a-alert-content');
+      if (errorEl) {
+        const errorText = await errorEl.textContent();
+        throw new Error(`Login falhou: ${errorText.trim()}`);
+      }
+      throw new Error('Login falhou. Verifique email e senha.');
+    }
+
+    // Navega para a biblioteca
+    await page.goto(`${CLOUD_READER_URL}/kindle-library`, {
+      waitUntil: 'domcontentloaded',
+      timeout: 30000,
+    });
+    await page.waitForTimeout(2000);
+
+    const finalUrl = page.url();
+    if (finalUrl.includes('/kindle-library') && !finalUrl.includes('signin')) {
+      console.log(`[${userId}] Login Amazon OK`);
+      const sessionState = await context.storageState();
+      return { status: 'logged_in', sessionState, adpToken: s.adpToken };
+    }
+
+    throw new Error('Não foi possível acessar a biblioteca Kindle após login.');
+  } catch (err) {
+    if (err.message.includes('needs_otp') || err.message === 'needs_otp') {
+      return { status: 'needs_otp' };
+    }
+    await closeBrowser(userId);
+    throw err;
+  }
+}
+
+async function submitOTP(userId, otpCode) {
+  const s = getSession(userId);
+  if (!s || !s.page) throw new Error('Browser não iniciado');
+
+  const { page, context } = s;
+
+  try {
+    // Preenche o código OTP
+    const otpInput = await page.$('#auth-mfa-otpcode, #cvf-input-code, input[name="otpCode"], input[name="code"]');
+    if (!otpInput) throw new Error('Campo de código não encontrado.');
+
+    await otpInput.fill(otpCode);
+
+    // Clica no botão de submit
+    const submitBtn = await page.$('#auth-signin-button, #cvf-submit-code-button, button[type="submit"]');
+    if (submitBtn) await submitBtn.click();
+
+    await page.waitForTimeout(3000);
+
+    const url = page.url();
+    if (url.includes('/ap/cvf') || url.includes('/ap/mfa')) {
+      throw new Error('Código inválido. Tente novamente.');
+    }
+
+    // Navega para a biblioteca
+    await page.goto(`${CLOUD_READER_URL}/kindle-library`, {
+      waitUntil: 'domcontentloaded',
+      timeout: 30000,
+    });
+    await page.waitForTimeout(2000);
+
+    const finalUrl = page.url();
+    if (finalUrl.includes('/kindle-library') && !finalUrl.includes('signin')) {
+      console.log(`[${userId}] Login com OTP OK`);
+      const sessionState = await context.storageState();
+      return { status: 'logged_in', sessionState, adpToken: s.adpToken };
+    }
+
+    throw new Error('Não foi possível acessar a biblioteca após verificação.');
+  } catch (err) {
+    if (err.message.includes('Código inválido')) throw err;
+    await closeBrowser(userId);
+    throw err;
+  }
 }
 
 async function scrapeAll(userId) {
@@ -506,4 +613,4 @@ async function isBrowserOpen(userId) {
   return s !== null && s.browser !== null && s.page !== null;
 }
 
-module.exports = { openLogin, waitForLogin, scrapeAll, closeBrowser, editNote, isBrowserOpen, getSyncProgress };
+module.exports = { openLogin, submitOTP, scrapeAll, closeBrowser, editNote, isBrowserOpen, getSyncProgress };

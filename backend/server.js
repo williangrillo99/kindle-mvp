@@ -3,7 +3,7 @@ const cors = require('cors');
 const path = require('path');
 const crypto = require('crypto');
 const uuidv4 = () => crypto.randomUUID();
-const { openLogin, waitForLogin, scrapeAll, closeBrowser, editNote, getSyncProgress } = require('./scraper');
+const { openLogin, submitOTP, scrapeAll, closeBrowser, editNote, getSyncProgress } = require('./scraper');
 const { stmts } = require('./db');
 const { hashPassword, comparePassword, generateToken, authMiddleware } = require('./auth');
 
@@ -63,23 +63,15 @@ app.get('/api/auth/me', authMiddleware, (req, res) => {
 
 // ========== ROTAS PROTEGIDAS ==========
 
-// Abre Chrome real com login da Amazon
+// Login Amazon headless com email/senha
 app.post('/api/login', authMiddleware, async (req, res) => {
   try {
-    // Busca sessão Amazon salva do usuário
+    const { amazonEmail, amazonPassword } = req.body;
     const session = stmts.getAmazonSession.get(req.userId);
     const sessionData = session ? session.session_data : null;
-    await openLogin(req.userId, sessionData);
-    res.json({ status: 'login_opened' });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
-// Polling — verifica se login foi concluído
-app.get('/api/login/status', authMiddleware, async (req, res) => {
-  try {
-    const result = await waitForLogin(req.userId, 5000);
+    const result = await openLogin(req.userId, sessionData, amazonEmail, amazonPassword);
+
     // Se logou, salva a sessão Amazon no DB
     if (result.status === 'logged_in' && result.sessionState) {
       stmts.upsertAmazonSession.run(
@@ -88,9 +80,32 @@ app.get('/api/login/status', authMiddleware, async (req, res) => {
         result.adpToken || '',
       );
     }
+
     res.json({ status: result.status });
-  } catch {
-    res.json({ status: 'waiting' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Submete código OTP (2FA)
+app.post('/api/login/otp', authMiddleware, async (req, res) => {
+  try {
+    const { otpCode } = req.body;
+    if (!otpCode) return res.status(400).json({ error: 'Código é obrigatório' });
+
+    const result = await submitOTP(req.userId, otpCode);
+
+    if (result.status === 'logged_in' && result.sessionState) {
+      stmts.upsertAmazonSession.run(
+        uuidv4(), req.userId,
+        JSON.stringify(result.sessionState),
+        result.adpToken || '',
+      );
+    }
+
+    res.json({ status: result.status });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

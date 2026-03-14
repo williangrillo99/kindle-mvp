@@ -1221,12 +1221,23 @@
         <div class="login-screen">
           <h1>Kindle<span>Sync</span></h1>
           <p>Ola, ${escapeHtml(currentUser.name || currentUser.email)}! Conecte sua conta Amazon para importar seus livros e destaques.</p>
-          <button class="btn-connect" id="btn-login">Sincronizar com Amazon Kindle</button>
+          <form class="auth-form" id="amazon-form">
+            <input type="email" name="amazonEmail" placeholder="Email da Amazon" autocomplete="email" required>
+            <input type="password" name="amazonPassword" placeholder="Senha da Amazon" autocomplete="current-password" required>
+            <button type="submit" class="btn-connect" id="btn-login">Sincronizar com Amazon Kindle</button>
+          </form>
           <div class="status-text" id="status"></div>
+          <div id="otp-container" style="display:none;margin-top:16px;">
+            <p style="color:var(--text-secondary);font-size:14px;margin-bottom:8px;">Amazon pediu codigo de verificacao (2FA):</p>
+            <form class="auth-form" id="otp-form">
+              <input type="text" name="otpCode" placeholder="Codigo de verificacao" autocomplete="one-time-code" required maxlength="10">
+              <button type="submit" class="btn-connect">Verificar</button>
+            </form>
+          </div>
           <button style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:12px;margin-top:10px;" id="btn-logout">Sair da conta</button>
         </div>
       `;
-      document.getElementById('btn-login').addEventListener('click', handleAmazonSync);
+      document.getElementById('amazon-form').addEventListener('submit', handleAmazonSync);
       document.getElementById('btn-logout').addEventListener('click', handleLogout);
     }
 
@@ -1692,58 +1703,95 @@
       } catch {}
     }
 
-    async function handleAmazonSync() {
+    async function handleAmazonSync(e) {
+      if (e) e.preventDefault();
       const btn = document.getElementById('btn-login') || document.getElementById('btn-resync');
       const status = document.getElementById('status');
+      const form = document.getElementById('amazon-form');
+
+      // Pega credenciais Amazon do form ou do resync (usa sessão salva)
+      let amazonEmail = '';
+      let amazonPassword = '';
+      if (form) {
+        const formData = new FormData(form);
+        amazonEmail = formData.get('amazonEmail') || '';
+        amazonPassword = formData.get('amazonPassword') || '';
+      }
 
       if (btn) btn.disabled = true;
-      if (status) status.innerHTML = '<span class="spinner"></span> Abrindo login da Amazon...';
+      if (status) status.innerHTML = '<span class="spinner"></span> Fazendo login na Amazon...';
 
       try {
-        await apiFetch(`${API_URL}/api/login`, { method: 'POST' });
-        if (status) status.innerHTML = '<span class="spinner"></span> Aguardando login no Chrome...';
+        const loginRes = await apiFetch(`${API_URL}/api/login`, {
+          method: 'POST',
+          body: JSON.stringify({ amazonEmail, amazonPassword }),
+        });
+        const loginData = await loginRes.json();
 
-        let loggedIn = false;
-        while (!loggedIn) {
-          const res = await apiFetch(`${API_URL}/api/login/status`);
-          const data = await res.json();
-          if (data.status === 'logged_in') {
-            loggedIn = true;
-          } else if (data.status === 'browser_closed') {
-            if (status) status.textContent = '';
-            if (btn) btn.disabled = false;
-            return;
-          } else {
-            await new Promise(r => setTimeout(r, 2000));
+        if (loginData.error) throw new Error(loginData.error);
+
+        // Se precisa OTP (2FA)
+        if (loginData.status === 'needs_otp') {
+          if (status) status.innerHTML = '';
+          const otpContainer = document.getElementById('otp-container');
+          if (otpContainer) {
+            otpContainer.style.display = 'block';
+            document.getElementById('otp-form').addEventListener('submit', async (ev) => {
+              ev.preventDefault();
+              const otpCode = new FormData(ev.target).get('otpCode');
+              if (status) status.innerHTML = '<span class="spinner"></span> Verificando codigo...';
+              try {
+                const otpRes = await apiFetch(`${API_URL}/api/login/otp`, {
+                  method: 'POST',
+                  body: JSON.stringify({ otpCode }),
+                });
+                const otpData = await otpRes.json();
+                if (otpData.error) throw new Error(otpData.error);
+                if (otpData.status === 'logged_in') {
+                  otpContainer.style.display = 'none';
+                  await doSync(status, btn);
+                }
+              } catch (otpErr) {
+                if (status) status.textContent = 'Erro: ' + otpErr.message;
+              }
+            });
           }
+          if (btn) btn.disabled = false;
+          return;
         }
 
-        if (status) status.innerHTML = '<span class="spinner"></span> Sincronizando livros e destaques...';
-
-        const syncPromise = apiFetch(`${API_URL}/api/sync`, { method: 'POST' }).then(r => r.json());
-
-        const progressInterval = setInterval(async () => {
-          try {
-            const pRes = await apiFetch(`${API_URL}/api/sync/progress`);
-            const progress = await pRes.json();
-            if (progress.total > 0 && status) {
-              status.innerHTML = `<span class="spinner"></span> Extraindo livro ${progress.current}/${progress.total}: ${progress.bookTitle}`;
-            }
-          } catch {}
-        }, 1500);
-
-        const syncData = await syncPromise;
-        clearInterval(progressInterval);
-
-        if (syncData.books) {
-          books = syncData.books;
-          selectedBook = books.length > 0 ? 0 : null;
-          render();
+        if (loginData.status === 'logged_in') {
+          await doSync(status, btn);
         }
       } catch (err) {
         console.error('Erro:', err);
         if (status) status.textContent = 'Erro: ' + err.message;
         if (btn) btn.disabled = false;
+      }
+    }
+
+    async function doSync(status, btn) {
+      if (status) status.innerHTML = '<span class="spinner"></span> Sincronizando livros e destaques...';
+
+      const syncPromise = apiFetch(`${API_URL}/api/sync`, { method: 'POST' }).then(r => r.json());
+
+      const progressInterval = setInterval(async () => {
+        try {
+          const pRes = await apiFetch(`${API_URL}/api/sync/progress`);
+          const progress = await pRes.json();
+          if (progress.total > 0 && status) {
+            status.innerHTML = `<span class="spinner"></span> Extraindo livro ${progress.current}/${progress.total}: ${progress.bookTitle}`;
+          }
+        } catch {}
+      }, 1500);
+
+      const syncData = await syncPromise;
+      clearInterval(progressInterval);
+
+      if (syncData.books) {
+        books = syncData.books;
+        selectedBook = books.length > 0 ? 0 : null;
+        render();
       }
     }
 
