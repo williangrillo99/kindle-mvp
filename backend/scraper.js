@@ -643,15 +643,24 @@ async function checkManualLogin(userId) {
   const { page, context } = s;
 
   try {
-    // Navega para a biblioteca pra verificar se logou
-    await page.goto(`${CLOUD_READER_URL}/kindle-library`, {
-      waitUntil: 'domcontentloaded',
-      timeout: 15000,
-    });
-    await page.waitForTimeout(2000);
-
     const url = page.url();
-    if (url.includes('/kindle-library') && !url.includes('signin') && !url.includes('/ap/')) {
+
+    // Ainda na página de login — não interrompe
+    if (url.includes('/ap/signin') || url.includes('/ap/') || url.includes('/ap/cvf') || url.includes('/ap/mfa')) {
+      return { status: 'waiting_manual_login' };
+    }
+
+    // Se já saiu do login, tenta ir pra biblioteca
+    if (!url.includes('/kindle-library')) {
+      await page.goto(`${CLOUD_READER_URL}/kindle-library`, {
+        waitUntil: 'domcontentloaded',
+        timeout: 15000,
+      });
+      await page.waitForTimeout(2000);
+    }
+
+    const finalUrl = page.url();
+    if (finalUrl.includes('/kindle-library') && !finalUrl.includes('signin')) {
       console.log(`[${userId}] Login manual completado!`);
       const sessionState = await context.storageState();
       return { status: 'logged_in', sessionState, adpToken: s.adpToken };

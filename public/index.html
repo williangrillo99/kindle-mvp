@@ -1221,24 +1221,12 @@
         <div class="login-screen">
           <h1>Kindle<span>Sync</span></h1>
           <p>Ola, ${escapeHtml(currentUser.name || currentUser.email)}! Conecte sua conta Amazon para importar seus livros e destaques.</p>
-          <form class="auth-form" id="amazon-form">
-            <input type="email" name="amazonEmail" placeholder="Email da Amazon" autocomplete="email">
-            <input type="password" name="amazonPassword" placeholder="Senha da Amazon" autocomplete="current-password">
-            <button type="submit" class="btn-connect" id="btn-login">Sincronizar com Amazon Kindle</button>
-            <p style="color:var(--text-muted);font-size:12px;margin-top:8px;text-align:center;">Rodando localmente? Deixe os campos vazios para abrir o site da Amazon e digitar direto nele.</p>
-          </form>
+          <button class="btn-connect" id="btn-login" style="margin-top:16px;">Sincronizar com Amazon Kindle</button>
           <div class="status-text" id="status"></div>
-          <div id="otp-container" style="display:none;margin-top:16px;">
-            <p style="color:var(--text-secondary);font-size:14px;margin-bottom:8px;">Amazon pediu codigo de verificacao (2FA):</p>
-            <form class="auth-form" id="otp-form">
-              <input type="text" name="otpCode" placeholder="Codigo de verificacao" autocomplete="one-time-code" required maxlength="10">
-              <button type="submit" class="btn-connect">Verificar</button>
-            </form>
-          </div>
           <button style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:12px;margin-top:10px;" id="btn-logout">Sair da conta</button>
         </div>
       `;
-      document.getElementById('amazon-form').addEventListener('submit', handleAmazonSync);
+      document.getElementById('btn-login').addEventListener('click', handleAmazonSync);
       document.getElementById('btn-logout').addEventListener('click', handleLogout);
     }
 
@@ -1708,68 +1696,30 @@
       if (e) e.preventDefault();
       const btn = document.getElementById('btn-login') || document.getElementById('btn-resync');
       const status = document.getElementById('status');
-      const form = document.getElementById('amazon-form');
-
-      // Pega credenciais Amazon do form ou do resync (usa sessão salva)
-      let amazonEmail = '';
-      let amazonPassword = '';
-      if (form) {
-        const formData = new FormData(form);
-        amazonEmail = formData.get('amazonEmail') || '';
-        amazonPassword = formData.get('amazonPassword') || '';
-      }
 
       if (btn) btn.disabled = true;
-      if (status) status.innerHTML = '<span class="spinner"></span> Fazendo login na Amazon...';
+      if (status) status.innerHTML = '<span class="spinner"></span> Conectando...';
 
       try {
         const loginRes = await apiFetch(`${API_URL}/api/login`, {
           method: 'POST',
-          body: JSON.stringify({ amazonEmail, amazonPassword }),
+          body: JSON.stringify({}),
         });
         const loginData = await loginRes.json();
 
         if (loginData.error) throw new Error(loginData.error);
 
-        // Se precisa OTP (2FA)
-        if (loginData.status === 'needs_otp') {
-          if (status) status.innerHTML = '';
-          const otpContainer = document.getElementById('otp-container');
-          if (otpContainer) {
-            otpContainer.style.display = 'block';
-            document.getElementById('otp-form').addEventListener('submit', async (ev) => {
-              ev.preventDefault();
-              const otpCode = new FormData(ev.target).get('otpCode');
-              if (status) status.innerHTML = '<span class="spinner"></span> Verificando codigo...';
-              try {
-                const otpRes = await apiFetch(`${API_URL}/api/login/otp`, {
-                  method: 'POST',
-                  body: JSON.stringify({ otpCode }),
-                });
-                const otpData = await otpRes.json();
-                if (otpData.error) throw new Error(otpData.error);
-                if (otpData.status === 'logged_in') {
-                  otpContainer.style.display = 'none';
-                  await doSync(status, btn);
-                }
-              } catch (otpErr) {
-                if (status) status.textContent = 'Erro: ' + otpErr.message;
-              }
-            });
-          }
-          if (btn) btn.disabled = false;
-          return;
-        }
-
-        // Modo interativo: mostra browser remoto para login na Amazon
-        if (loginData.status === 'waiting_manual_login') {
-          if (form) form.style.display = 'none';
-          showRemoteBrowser(status, btn);
-          return;
-        }
-
+        // Sessão salva ainda válida — sync direto
         if (loginData.status === 'logged_in') {
           await doSync(status, btn);
+          return;
+        }
+
+        // Abre browser remoto para login na Amazon
+        if (loginData.status === 'waiting_manual_login') {
+          if (btn) btn.style.display = 'none';
+          showRemoteBrowser(status, btn);
+          return;
         }
       } catch (err) {
         console.error('Erro:', err);
