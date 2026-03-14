@@ -1749,6 +1749,22 @@
 
         // Ambiente sem display (ex.: VPS): usa viewer remoto
         if (loginData.status === 'waiting_manual_login_remote') {
+          const showRemoteLoginHelp = () => {
+            if (!status) return;
+            status.innerHTML = `
+              Nao foi possivel detectar a sessao automaticamente.<br>
+              Confirme que a extensao KindleSync esta ativa no navegador onde voce fez login na Amazon.<br>
+              <button id="retry-remote-login" style="margin-top:8px;background:var(--accent);color:white;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:12px;">Tentar novamente</button>
+            `;
+            const retryBtn = document.getElementById('retry-remote-login');
+            if (retryBtn) {
+              retryBtn.addEventListener('click', () => {
+                if (btn) btn.disabled = false;
+                handleAmazonSync();
+              }, { once: true });
+            }
+          };
+
           if (status) {
             status.innerHTML = '<span class="spinner"></span> Ambiente sem interface grafica. A Amazon abriu em outra aba. Faca login e aguarde a deteccao automatica da sessao.';
           }
@@ -1783,12 +1799,17 @@
               if (waitCycles >= 24) {
                 clearInterval(pollCheck);
                 window.removeEventListener('message', onAmazonDone);
-                if (status) {
-                  status.textContent = 'Nao foi possivel detectar a sessao automaticamente. Verifique a extensao KindleSync e tente novamente.';
-                }
+                showRemoteLoginHelp();
                 if (btn) btn.disabled = false;
               }
-            } catch {}
+            } catch {
+              if (waitCycles >= 24) {
+                clearInterval(pollCheck);
+                window.removeEventListener('message', onAmazonDone);
+                showRemoteLoginHelp();
+                if (btn) btn.disabled = false;
+              }
+            }
           }, 5000);
           return;
         }
