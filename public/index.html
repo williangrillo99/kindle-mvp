@@ -1148,6 +1148,9 @@
   <script>
     // Mesmo servidor serve frontend e backend
     const API_URL = '';
+    // ID da extensao Chrome KindleSync (preencher apos instalar a extensao)
+    // Para descobrir: chrome://extensions → copie o ID da extensao KindleSync
+    window.KINDLE_EXT_ID = '';
 
     const app = document.getElementById('app');
     let books = [];
@@ -1715,10 +1718,22 @@
           return;
         }
 
-        // Abre nova aba com login Amazon (captura cookies automaticamente)
+        // Abre pagina real da Amazon — extensao captura cookies automaticamente
         if (loginData.status === 'waiting_manual_login') {
-          if (status) status.innerHTML = '<span class="spinner"></span> Faca login na aba que abriu. Apos o login, a sincronizacao inicia automaticamente...';
-          window.open(`${API_URL}/amazon-login.html?token=${encodeURIComponent(localStorage.getItem('token'))}`, '_blank');
+          // Configura a extensao do Chrome com serverUrl e token
+          // A extensao precisa ter o ID correto em KINDLE_EXT_ID
+          try {
+            if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage && window.KINDLE_EXT_ID) {
+              chrome.runtime.sendMessage(window.KINDLE_EXT_ID, {
+                type: 'configure',
+                serverUrl: API_URL,
+                token: localStorage.getItem('token'),
+              });
+            }
+          } catch {}
+          if (status) status.innerHTML = '<span class="spinner"></span> Faca login na Amazon na aba que abriu. A sincronizacao inicia automaticamente apos o login...';
+          window.open('https://www.amazon.com.br/ap/signin?openid.pape.max_auth_age=1209600&openid.return_to=https%3A%2F%2Fler.amazon.com.br%2Fkindle-library&openid.identity=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select&openid.assoc_handle=amzn_kindle_mykindle_br&openid.mode=checkid_setup&language=pt_BR&openid.claimed_id=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select&pageId=amzn_kindle_mykindle_br&openid.ns=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0', '_blank');
+          // Escuta mensagem da extensao quando login completar
           window.addEventListener('message', async function onMsg(ev) {
             if (ev.data === 'amazon_login_done') {
               window.removeEventListener('message', onMsg);
@@ -1726,13 +1741,19 @@
               await doSync(status, btn);
             }
           });
+          // Fallback: poll pra ver se a extensao enviou os cookies
           const pollCheck = setInterval(async () => {
             try {
-              const checkRes = await apiFetch(`${API_URL}/api/login/check`, { method: 'POST' });
-              const checkData = await checkRes.json();
-              if (checkData.status === 'logged_in') {
-                clearInterval(pollCheck);
-                await doSync(status, btn);
+              const sessionRes = await apiFetch(`${API_URL}/api/amazon-session`);
+              const sessionData = await sessionRes.json();
+              if (sessionData.hasSession) {
+                // Tenta usar a sessao
+                const loginRetry = await apiFetch(`${API_URL}/api/login`, { method: 'POST', body: JSON.stringify({}) });
+                const retryData = await loginRetry.json();
+                if (retryData.status === 'logged_in') {
+                  clearInterval(pollCheck);
+                  await doSync(status, btn);
+                }
               }
             } catch {}
           }, 5000);

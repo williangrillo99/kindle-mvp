@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "KindleSync - Amazon Login",
+  "version": "1.0",
+  "description": "Captura cookies da Amazon automaticamente para o KindleSync",
+  "permissions": ["cookies", "storage"],
+  "host_permissions": ["*://*.amazon.com.br/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://ler.amazon.com.br/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "externally_connectable": {
+    "matches": ["http://68.183.110.111/*", "http://localhost/*"]
+  },
+  "options_page": "options.html"
+}

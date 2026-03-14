@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>KindleSync - Configurações</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0d1117;
+      color: #e6edf3;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      padding: 32px;
+      min-width: 400px;
+    }
+    h1 {
+      font-size: 20px;
+      margin-bottom: 24px;
+      color: #58a6ff;
+    }
+    label {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 14px;
+      color: #8b949e;
+    }
+    input {
+      width: 100%;
+      padding: 10px 12px;
+      background: #161b22;
+      color: #e6edf3;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      font-size: 14px;
+      margin-bottom: 16px;
+      outline: none;
+    }
+    input:focus { border-color: #58a6ff; }
+    button {
+      padding: 10px 24px;
+      background: #238636;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    button:hover { background: #2ea043; }
+    .status {
+      margin-top: 12px;
+      font-size: 13px;
+      color: #3fb950;
+      display: none;
+    }
+    .hint {
+      font-size: 12px;
+      color: #8b949e;
+      margin-bottom: 20px;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <h1>KindleSync - Configurações</h1>
+  <p class="hint">
+    Preencha com a URL do seu servidor KindleSync e o token de autenticação.<br>
+    Você encontra o token no KindleSync após fazer login (aparece no console do navegador ou na página de configurações).
+  </p>
+
+  <label for="serverUrl">URL do Servidor</label>
+  <input type="url" id="serverUrl" placeholder="http://68.183.110.111:3001">
+
+  <label for="token">Token de Autenticação</label>
+  <input type="text" id="token" placeholder="eyJhbGciOiJIUzI1NiIs...">
+
+  <button id="save">Salvar</button>
+  <div class="status" id="status">Configurações salvas!</div>
+
+  <script>
+    const serverUrlInput = document.getElementById('serverUrl');
+    const tokenInput = document.getElementById('token');
+    const saveBtn = document.getElementById('save');
+    const status = document.getElementById('status');
+
+    // Carrega config salva
+    chrome.storage.local.get(['serverUrl', 'token'], (data) => {
+      if (data.serverUrl) serverUrlInput.value = data.serverUrl;
+      if (data.token) tokenInput.value = data.token;
+    });
+
+    saveBtn.addEventListener('click', () => {
+      const serverUrl = serverUrlInput.value.trim().replace(/\/$/, '');
+      const token = tokenInput.value.trim();
+
+      if (!serverUrl || !token) {
+        status.style.color = '#f85149';
+        status.textContent = 'Preencha todos os campos!';
+        status.style.display = 'block';
+        return;
+      }
+
+      chrome.storage.local.set({ serverUrl, token }, () => {
+        status.style.color = '#3fb950';
+        status.textContent = 'Configurações salvas!';
+        status.style.display = 'block';
+        setTimeout(() => { status.style.display = 'none'; }, 3000);
+      });
+    });
+  </script>
+</body>
+</html>
