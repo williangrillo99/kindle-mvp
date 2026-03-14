@@ -3,9 +3,9 @@ const { chromium } = require('playwright');
 const CLOUD_READER_URL = 'https://ler.amazon.com.br';
 const LOGIN_URL = 'https://www.amazon.com.br/ap/signin?openid.pape.max_auth_age=1209600&openid.return_to=https%3A%2F%2Fler.amazon.com.br%2Fkindle-library&openid.identity=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select&openid.assoc_handle=amzn_kindle_mykindle_br&openid.mode=checkid_setup&language=pt_BR&openid.claimed_id=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select&pageId=amzn_kindle_mykindle_br&openid.ns=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0';
 
-// HEADLESS=false → abre browser visível (modo local/interativo)
-// HEADLESS=true ou não definido → headless (modo VPS/automático)
-const IS_HEADLESS = process.env.HEADLESS !== 'false';
+// HEADLESS=false força modo visível sempre.
+// Se não definido, login manual abre visível e automático mantém headless.
+const FORCE_HEADED = process.env.HEADLESS === 'false';
 
 // Instâncias por usuário: Map<userId, { browser, context, page, syncProgress, adpToken }>
 const userSessions = new Map();
@@ -23,8 +23,11 @@ async function openLogin(userId, savedSessionData, amazonEmail, amazonPassword) 
   let s = getSession(userId);
   if (s && s.browser) return { status: 'already_open' };
 
+  const isManualLogin = !amazonEmail || !amazonPassword;
+  const headless = FORCE_HEADED ? false : !isManualLogin;
+
   const browser = await chromium.launch({
-    headless: IS_HEADLESS,
+    headless,
     args: [
       '--disable-blink-features=AutomationControlled',
       '--no-sandbox',
@@ -94,7 +97,7 @@ async function openLogin(userId, savedSessionData, amazonEmail, amazonPassword) 
     }
   }
 
-  // Modo interativo: abre o browser e espera o usuário logar manualmente
+  // Modo interativo: abre browser real e espera login manual
   if (!amazonEmail || !amazonPassword) {
     console.log(`[${userId}] Modo interativo: faça login na janela do browser...`);
     return { status: 'waiting_manual_login' };

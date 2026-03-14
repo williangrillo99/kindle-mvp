@@ -1217,32 +1217,20 @@
     }
 
     function renderAmazonConnect() {
-      const token = localStorage.getItem('token');
-      const serverUrl = API_URL || window.location.origin;
-      const bookmarkletCode = "javascript:void(window.location='" + serverUrl + "/api/capture-cookies?cookies='+encodeURIComponent(document.cookie)+'&token=" + token + "')";
-
       app.innerHTML = `
         <div class="login-screen">
           <h1>Kindle<span>Sync</span></h1>
           <p>Ola, ${escapeHtml(currentUser.name || currentUser.email)}! Conecte sua conta Amazon para importar seus livros e destaques.</p>
 
           <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:24px;max-width:480px;width:100%;margin-top:16px;">
-            <div style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;line-height:1.6;">
-              <strong style="color:var(--text-primary);font-size:15px;">Primeira vez? Arraste o botao abaixo para sua barra de favoritos:</strong>
-            </div>
-            <div style="text-align:center;margin-bottom:16px;">
-              <a href="${bookmarkletCode}" onclick="event.preventDefault();alert('Arraste este botao para sua barra de favoritos!')" style="display:inline-block;padding:10px 24px;background:var(--accent);color:white;border-radius:8px;text-decoration:none;font-weight:600;font-size:14px;cursor:grab;">Capturar Kindle</a>
-            </div>
-            <div style="font-size:11px;color:var(--text-muted);text-align:center;margin-bottom:20px;">Arraste o botao acima para a barra de favoritos do navegador (so precisa fazer isso uma vez)</div>
-            <hr style="border:none;border-top:1px solid var(--border);margin-bottom:20px;">
             <div style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;">
               <strong style="color:var(--text-primary);">Para sincronizar:</strong>
             </div>
             <div style="font-size:12px;color:var(--text-muted);line-height:1.8;">
-              1. Clique no botao abaixo para abrir a Amazon<br>
-              2. Faca login normalmente na sua conta Amazon<br>
-              3. Apos o login, clique em <strong style="color:var(--accent);">"Capturar Kindle"</strong> nos favoritos<br>
-              4. Pronto! A sincronizacao inicia automaticamente
+              1. Clique no botao abaixo para abrir o navegador da Amazon<br>
+              2. Faca login normalmente na janela real que abrir<br>
+              3. Aguarde o KindleSync detectar o login automaticamente<br>
+              4. A sincronizacao inicia sem bookmarklet
             </div>
           </div>
 
@@ -1740,31 +1728,16 @@
           return;
         }
 
-        // Abre pagina real da Amazon — bookmarklet captura cookies
+        // Login manual no browser real do Playwright
         if (loginData.status === 'waiting_manual_login') {
-          if (status) status.innerHTML = '<span class="spinner"></span> Faca login na Amazon. Apos o login, clique em "Capturar Kindle" nos seus favoritos.';
-          window.open('https://www.amazon.com.br/ap/signin?openid.pape.max_auth_age=1209600&openid.return_to=https%3A%2F%2Fler.amazon.com.br%2Fkindle-library&openid.identity=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select&openid.assoc_handle=amzn_kindle_mykindle_br&openid.mode=checkid_setup&language=pt_BR&openid.claimed_id=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select&pageId=amzn_kindle_mykindle_br&openid.ns=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0', '_blank');
-          // Escuta mensagem da extensao quando login completar
-          window.addEventListener('message', async function onMsg(ev) {
-            if (ev.data === 'amazon_login_done') {
-              window.removeEventListener('message', onMsg);
-              clearInterval(pollCheck);
-              await doSync(status, btn);
-            }
-          });
-          // Fallback: poll pra ver se a extensao enviou os cookies
+          if (status) status.innerHTML = '<span class="spinner"></span> Faca login na janela da Amazon aberta pelo Playwright...';
           const pollCheck = setInterval(async () => {
             try {
-              const sessionRes = await apiFetch(`${API_URL}/api/amazon-session`);
-              const sessionData = await sessionRes.json();
-              if (sessionData.hasSession) {
-                // Tenta usar a sessao
-                const loginRetry = await apiFetch(`${API_URL}/api/login`, { method: 'POST', body: JSON.stringify({}) });
-                const retryData = await loginRetry.json();
-                if (retryData.status === 'logged_in') {
-                  clearInterval(pollCheck);
-                  await doSync(status, btn);
-                }
+              const checkRes = await apiFetch(`${API_URL}/api/login/check`, { method: 'POST' });
+              const checkData = await checkRes.json();
+              if (checkData.status === 'logged_in') {
+                clearInterval(pollCheck);
+                await doSync(status, btn);
               }
             } catch {}
           }, 5000);
