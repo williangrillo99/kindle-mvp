@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login Amazon - KindleSync</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0d1117;
+      color: #e6edf3;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      padding: 16px;
+    }
+    h2 {
+      margin-bottom: 8px;
+      font-size: 18px;
+      color: #8b949e;
+    }
+    .hint {
+      color: #8b949e;
+      font-size: 12px;
+      margin-bottom: 12px;
+    }
+    .screen-container {
+      position: relative;
+      cursor: crosshair;
+      border: 2px solid #30363d;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #161b22;
+      max-width: 1024px;
+      width: 100%;
+    }
+    .screen-container img {
+      display: block;
+      width: 100%;
+      min-height: 300px;
+      object-fit: contain;
+    }
+    .keyboard-input {
+      width: 100%;
+      max-width: 1024px;
+      margin-top: 10px;
+      padding: 12px 16px;
+      background: #161b22;
+      color: #e6edf3;
+      border: 2px solid #30363d;
+      border-radius: 8px;
+      font-size: 16px;
+      outline: none;
+    }
+    .keyboard-input:focus {
+      border-color: #58a6ff;
+    }
+    .status {
+      margin-top: 12px;
+      color: #3fb950;
+      font-size: 14px;
+    }
+    .spinner {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid #8b949e;
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <h2>Faca login na sua conta Amazon</h2>
+  <p class="hint">Clique na tela para interagir. Use o campo abaixo para digitar. Apos o login, esta aba fecha automaticamente.</p>
+  <div class="screen-container">
+    <img id="screen" alt="Carregando tela de login..." src="">
+  </div>
+  <input type="text" id="keyboard" class="keyboard-input" placeholder="Clique aqui e digite seu email, senha, etc..."
+    autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" autofocus>
+  <div class="status" id="status"><span class="spinner"></span> Carregando pagina de login...</div>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const TOKEN = params.get('token');
+    const API_URL = window.location.origin;
+
+    const screen = document.getElementById('screen');
+    const keyboard = document.getElementById('keyboard');
+    const status = document.getElementById('status');
+
+    function authHeaders() {
+      return { 'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json' };
+    }
+
+    // Atualiza screenshot
+    async function refreshScreen() {
+      try {
+        const res = await fetch(`${API_URL}/api/login/screenshot`, {
+          headers: { 'Authorization': 'Bearer ' + TOKEN },
+        });
+        if (res.ok) {
+          const blob = await res.blob();
+          const url = URL.createObjectURL(blob);
+          screen.onload = () => URL.revokeObjectURL(url);
+          screen.src = url;
+          status.innerHTML = '<span class="spinner"></span> Aguardando login...';
+        }
+      } catch {}
+    }
+
+    // Atualiza a cada 800ms
+    refreshScreen();
+    const screenshotInterval = setInterval(refreshScreen, 800);
+
+    // Clique na imagem
+    screen.addEventListener('click', async (e) => {
+      const rect = screen.getBoundingClientRect();
+      const scaleX = screen.naturalWidth / rect.width;
+      const scaleY = screen.naturalHeight / rect.height;
+      const x = Math.round((e.clientX - rect.left) * scaleX);
+      const y = Math.round((e.clientY - rect.top) * scaleY);
+      await fetch(`${API_URL}/api/login/interact`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ type: 'click', x, y }),
+      });
+      setTimeout(refreshScreen, 400);
+      keyboard.focus();
+    });
+
+    // Digitacao
+    let typeTimeout = null;
+    keyboard.addEventListener('input', () => {
+      const text = keyboard.value;
+      if (!text) return;
+      clearTimeout(typeTimeout);
+      typeTimeout = setTimeout(async () => {
+        keyboard.value = '';
+        await fetch(`${API_URL}/api/login/interact`, {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify({ type: 'type', text }),
+        });
+        setTimeout(refreshScreen, 400);
+      }, 100);
+    });
+
+    // Teclas especiais
+    keyboard.addEventListener('keydown', async (e) => {
+      const specialKeys = ['Enter', 'Tab', 'Backspace', 'Escape', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'];
+      if (specialKeys.includes(e.key)) {
+        e.preventDefault();
+        await fetch(`${API_URL}/api/login/interact`, {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify({ type: 'key', key: e.key }),
+        });
+        setTimeout(refreshScreen, 400);
+      }
+    });
+
+    // Verifica se login completou
+    const checkInterval = setInterval(async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/login/check`, {
+          method: 'POST',
+          headers: authHeaders(),
+        });
+        const data = await res.json();
+        if (data.status === 'logged_in') {
+          clearInterval(checkInterval);
+          clearInterval(screenshotInterval);
+          status.innerHTML = 'Login completado! Fechando...';
+          // Avisa a janela principal
+          if (window.opener) {
+            window.opener.postMessage('amazon_login_done', '*');
+          }
+          setTimeout(() => window.close(), 1500);
+        }
+      } catch {}
+    }, 5000);
+  </script>
+</body>
+</html>
