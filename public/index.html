@@ -1709,6 +1709,7 @@
       if (e) e.preventDefault();
       const btn = document.getElementById('btn-login') || document.getElementById('btn-resync');
       const status = document.getElementById('status');
+      const token = localStorage.getItem('token');
 
       if (btn) btn.disabled = true;
       if (status) status.innerHTML = '<span class="spinner"></span> Conectando...';
@@ -1731,6 +1732,23 @@
         // Login manual no browser real do Playwright
         if (loginData.status === 'waiting_manual_login') {
           if (status) status.innerHTML = '<span class="spinner"></span> Faca login na janela da Amazon aberta pelo Playwright...';
+          const pollCheck = setInterval(async () => {
+            try {
+              const checkRes = await apiFetch(`${API_URL}/api/login/check`, { method: 'POST' });
+              const checkData = await checkRes.json();
+              if (checkData.status === 'logged_in') {
+                clearInterval(pollCheck);
+                await doSync(status, btn);
+              }
+            } catch {}
+          }, 5000);
+          return;
+        }
+
+        // Ambiente sem display (ex.: VPS): usa viewer remoto
+        if (loginData.status === 'waiting_manual_login_remote') {
+          if (status) status.innerHTML = '<span class="spinner"></span> Ambiente sem interface grafica. Abra a tela de login remoto...';
+          window.open(`/amazon-login.html?token=${encodeURIComponent(token || '')}`, '_blank');
           const pollCheck = setInterval(async () => {
             try {
               const checkRes = await apiFetch(`${API_URL}/api/login/check`, { method: 'POST' });

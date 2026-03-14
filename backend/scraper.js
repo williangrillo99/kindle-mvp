@@ -25,16 +25,37 @@ async function openLogin(userId, savedSessionData, amazonEmail, amazonPassword) 
 
   const isManualLogin = !amazonEmail || !amazonPassword;
   const headless = FORCE_HEADED ? false : !isManualLogin;
-
-  const browser = await chromium.launch({
-    headless,
-    args: [
-      '--disable-blink-features=AutomationControlled',
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-    ],
-  });
+  let browser;
+  let usedHeadlessFallback = false;
+  try {
+    browser = await chromium.launch({
+      headless,
+      args: [
+        '--disable-blink-features=AutomationControlled',
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+      ],
+    });
+  } catch (err) {
+    const message = (err && err.message) || '';
+    const missingDisplay = message.includes('Missing X server') || message.includes('without having a XServer');
+    if (isManualLogin && !headless && missingDisplay) {
+      console.log(`[${userId}] Sem X server; usando fallback headless para login remoto...`);
+      browser = await chromium.launch({
+        headless: true,
+        args: [
+          '--disable-blink-features=AutomationControlled',
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+        ],
+      });
+      usedHeadlessFallback = true;
+    } else {
+      throw err;
+    }
+  }
 
   const contextOptions = {
     userAgent:
@@ -100,7 +121,7 @@ async function openLogin(userId, savedSessionData, amazonEmail, amazonPassword) 
   // Modo interativo: abre browser real e espera login manual
   if (!amazonEmail || !amazonPassword) {
     console.log(`[${userId}] Modo interativo: faça login na janela do browser...`);
-    return { status: 'waiting_manual_login' };
+    return { status: usedHeadlessFallback ? 'waiting_manual_login_remote' : 'waiting_manual_login' };
   }
 
   // Modo automático: login com email/senha
