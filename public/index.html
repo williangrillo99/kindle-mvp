@@ -1159,7 +1159,6 @@
     let selectedHighlight = null;
     let currentUser = null;
     let authMode = 'login'; // 'login' ou 'register'
-    let remoteLoginState = null;
 
     const EDIT_ICON = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z" /></svg>`;
     const BOOK_ICON = `<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" /></svg>`;
@@ -1219,29 +1218,23 @@
     }
 
     function renderAmazonConnect() {
-      if (remoteLoginState?.active) {
-        renderRemoteAmazonLogin();
-        return;
-      }
-
       app.innerHTML = `
         <div class="login-screen">
           <h1>Kindle<span>Sync</span></h1>
-          <p>Ola, ${escapeHtml(currentUser.name || currentUser.email)}! Conecte sua conta Amazon para importar seus livros e destaques.</p>
+          <p>Ola, ${escapeHtml(currentUser.name || currentUser.email)}! Este modo usa somente a sessao Amazon ja salva no projeto.</p>
 
           <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:24px;max-width:480px;width:100%;margin-top:16px;">
             <div style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;">
               <strong style="color:var(--text-primary);">Para sincronizar:</strong>
             </div>
             <div style="font-size:12px;color:var(--text-muted);line-height:1.8;">
-              1. Clique no botao abaixo para iniciar login Amazon<br>
-              2. A tela de login abre no proprio KindleSync<br>
-              3. Faca login normalmente (com 2FA se pedir)<br>
-              4. Seus livros comecam a sincronizar automaticamente
+              1. Clique no botao abaixo para reutilizar a sessao Amazon salva<br>
+              2. Se a sessao ainda for valida, os livros sincronizam automaticamente<br>
+              3. Nao ha novo fluxo de login Amazon nesta tela
             </div>
           </div>
 
-          <button class="btn-connect" id="btn-login" style="margin-top:16px;">Abrir Amazon e Sincronizar</button>
+          <button class="btn-connect" id="btn-login" style="margin-top:16px;">Sincronizar com sessao existente</button>
           <div class="status-text" id="status"></div>
           <button style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:12px;margin-top:10px;" id="btn-logout">Sair da conta</button>
         </div>
@@ -1695,7 +1688,6 @@
     }
 
     function handleLogout() {
-      stopRemoteLoginLoops();
       localStorage.removeItem('token');
       currentUser = null;
       books = [];
@@ -1713,137 +1705,13 @@
       } catch {}
     }
 
-    function stopRemoteLoginLoops() {
-      if (!remoteLoginState) return;
-      if (remoteLoginState.screenshotInterval) clearInterval(remoteLoginState.screenshotInterval);
-      if (remoteLoginState.checkInterval) clearInterval(remoteLoginState.checkInterval);
-      remoteLoginState = null;
-    }
-
-    function renderRemoteAmazonLogin() {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        remoteLoginState = null;
-        renderAmazonConnect();
-        return;
-      }
-
-      app.innerHTML = `
-        <div class="login-screen" style="padding:20px;justify-content:flex-start;">
-          <h1 style="margin-top:8px;">Kindle<span>Sync</span></h1>
-          <p style="margin-bottom:8px;">Faca login na Amazon abaixo para continuar a sincronizacao.</p>
-          <div class="screen-container" style="max-width:980px;width:100%;cursor:crosshair;">
-            <img id="remote-screen" alt="Carregando tela de login Amazon..." src="">
-          </div>
-          <input type="text" id="remote-keyboard" class="keyboard-input" style="max-width:980px;" placeholder="Clique na tela e digite email, senha, OTP...">
-          <div class="status-text" id="remote-status"><span class="spinner"></span> Carregando tela de login...</div>
-          <div style="display:flex;gap:10px;">
-            <button class="btn-connect" id="remote-cancel" style="padding:10px 16px;font-size:13px;background:var(--bg-card);color:var(--text-primary);border:1px solid var(--border);">Cancelar</button>
-          </div>
-        </div>
-      `;
-
-      const screen = document.getElementById('remote-screen');
-      const keyboard = document.getElementById('remote-keyboard');
-      const status = document.getElementById('remote-status');
-      const cancelBtn = document.getElementById('remote-cancel');
-
-      async function refreshScreen() {
-        try {
-          const res = await fetch(`${API_URL}/api/login/screenshot`, {
-            headers: { 'Authorization': 'Bearer ' + token },
-            cache: 'no-store',
-          });
-          if (!res.ok) return;
-          const blob = await res.blob();
-          const url = URL.createObjectURL(blob);
-          screen.onload = () => URL.revokeObjectURL(url);
-          screen.src = url;
-          status.innerHTML = '<span class="spinner"></span> Aguardando login na Amazon...';
-        } catch {}
-      }
-
-      remoteLoginState = {
-        active: true,
-        screenshotInterval: setInterval(refreshScreen, 900),
-        checkInterval: null,
-      };
-
-      refreshScreen();
-
-      screen.addEventListener('click', async (e) => {
-        const rect = screen.getBoundingClientRect();
-        const scaleX = screen.naturalWidth && rect.width ? (screen.naturalWidth / rect.width) : 1;
-        const scaleY = screen.naturalHeight && rect.height ? (screen.naturalHeight / rect.height) : 1;
-        const x = Math.round((e.clientX - rect.left) * scaleX);
-        const y = Math.round((e.clientY - rect.top) * scaleY);
-        try {
-          await apiFetch(`${API_URL}/api/login/interact`, {
-            method: 'POST',
-            body: JSON.stringify({ type: 'click', x, y }),
-          });
-        } catch {}
-        setTimeout(refreshScreen, 350);
-        keyboard.focus();
-      });
-
-      let typeTimeout = null;
-      keyboard.addEventListener('input', () => {
-        const text = keyboard.value;
-        if (!text) return;
-        clearTimeout(typeTimeout);
-        typeTimeout = setTimeout(async () => {
-          keyboard.value = '';
-          try {
-            await apiFetch(`${API_URL}/api/login/interact`, {
-              method: 'POST',
-              body: JSON.stringify({ type: 'type', text }),
-            });
-          } catch {}
-          setTimeout(refreshScreen, 350);
-        }, 120);
-      });
-
-      keyboard.addEventListener('keydown', async (e) => {
-        const specialKeys = ['Enter', 'Tab', 'Backspace', 'Escape', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'];
-        if (!specialKeys.includes(e.key)) return;
-        e.preventDefault();
-        try {
-          await apiFetch(`${API_URL}/api/login/interact`, {
-            method: 'POST',
-            body: JSON.stringify({ type: 'key', key: e.key }),
-          });
-        } catch {}
-        setTimeout(refreshScreen, 350);
-      });
-
-      cancelBtn.addEventListener('click', async () => {
-        stopRemoteLoginLoops();
-        try { await apiFetch(`${API_URL}/api/close`, { method: 'POST' }); } catch {}
-        renderAmazonConnect();
-      });
-
-      remoteLoginState.checkInterval = setInterval(async () => {
-        try {
-          const res = await apiFetch(`${API_URL}/api/login/check`, { method: 'POST' });
-          const data = await res.json();
-          if (data.status === 'logged_in') {
-            stopRemoteLoginLoops();
-            status.innerHTML = '<span class="spinner"></span> Login confirmado. Iniciando sincronizacao...';
-            await doSync(status, null);
-          }
-        } catch {}
-      }, 3500);
-    }
-
     async function handleAmazonSync(e) {
       if (e) e.preventDefault();
       const btn = document.getElementById('btn-login') || document.getElementById('btn-resync');
       const status = document.getElementById('status');
-      const token = localStorage.getItem('token');
 
       if (btn) btn.disabled = true;
-      if (status) status.innerHTML = '<span class="spinner"></span> Conectando...';
+      if (status) status.innerHTML = '<span class="spinner"></span> Validando sessao Amazon salva...';
 
       try {
         const loginRes = await apiFetch(`${API_URL}/api/login`, {
@@ -1860,28 +1728,9 @@
           return;
         }
 
-        // Login manual no browser real do Playwright
-        if (loginData.status === 'waiting_manual_login') {
-          if (status) status.innerHTML = '<span class="spinner"></span> Faca login na janela da Amazon aberta pelo Playwright...';
-          const pollCheck = setInterval(async () => {
-            try {
-              const checkRes = await apiFetch(`${API_URL}/api/login/check`, { method: 'POST' });
-              const checkData = await checkRes.json();
-              if (checkData.status === 'logged_in') {
-                clearInterval(pollCheck);
-                await doSync(status, btn);
-              }
-            } catch {}
-          }, 5000);
-          return;
-        }
-
-        // Ambiente sem display (ex.: VPS): usa login remoto no proprio app
-        if (loginData.status === 'waiting_manual_login_remote') {
-          remoteLoginState = { active: true, screenshotInterval: null, checkInterval: null };
-          renderRemoteAmazonLogin();
-          return;
-        }
+        if (status) status.textContent = 'Sessao Amazon inexistente ou expirada neste projeto. Este modo nao abre novo login.';
+        if (btn) btn.disabled = false;
+        return;
       } catch (err) {
         console.error('Erro:', err);
         if (status) status.textContent = 'Erro: ' + err.message;
